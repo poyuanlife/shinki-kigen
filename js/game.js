@@ -7,6 +7,9 @@
 const TW = 64, TH = 32, MAP = 100;
 const CAMP = { x: 50.5, y: 50.5, r: 8.5 };
 const SAVE_KEY = 'deusmachina_save_v3';   // v3：和風忍者（v1 科技戰士、v2 奇幻遊俠，不相容）
+// 每個職業一個存檔欄位；忍者沿用原本的欄位，舊存檔不受影響
+const saveKey = cls => (!cls || cls === 'ninja' ? SAVE_KEY : SAVE_KEY + '_' + cls);
+const readSave = cls => { try { return JSON.parse(localStorage.getItem(saveKey(cls))); } catch (e) { return null; } };
 const $ = id => document.getElementById(id);
 
 // 遊戲自己接住的錯誤：記錄完整訊息與位置，同一個錯誤 10 秒內只記一次
@@ -323,13 +326,14 @@ function findPath(fx, fy, tx, ty, limit = 4000, r = 0.3) {
 // =====================================================
 //  玩家
 // =====================================================
-function newPlayer() {
-  const p = {
-    level: 1, exp: 0, str: 20, dex: 15, vit: 20, ene: 10, statPts: 0, skillPts: 1, skills: {},
-    gold: 100, inv: new Array(40).fill(null), equip: {}, potions: { hp: 5, mp: 3 }, rightSkill: 'burst', leftSkill: 'attack', zone: 'field',
-  };
+function newPlayer(cls = 'ninja') {
+  const C = CLASSES[cls] || CLASSES.ninja;
+  const p = Object.assign({
+    cls, level: 1, exp: 0, statPts: 0, skillPts: 1, skills: {},
+    gold: 100, inv: new Array(40).fill(null), equip: {}, potions: { hp: 5, mp: 3 }, rightSkill: C.first, leftSkill: 'attack', zone: 'field',
+  }, C.stats);
   ensureSkillSlots(p);
-  p.equip.weapon = genItem(1, 0, 'weapon', 'rifle');
+  p.equip.weapon = genItem(1, 0, 'weapon', C.weapon);
   p.equip.armor = genItem(1, 0, 'armor');
   initTransient(p);
   return p;
@@ -338,7 +342,7 @@ function initTransient(p) {
   Object.assign(p, {
     x: CAMP.x, y: CAMP.y + 2.2, r: 0.3, path: [], target: null, goal: null, atkCd: 0, face: 0.8, walk: 0, moving: 0,
     muzzle: 0, hurt: 0, buffs: {}, shield: 0, cds: {}, cdMax: {}, shotQ: [], gatT: 0, dead: false, retarget: 0,
-    act: null, runT: 0, deadT: 0,
+    act: null, runT: 0, deadT: 0, senT: 0,
   });
   p.st = calcStats(p); p.hp = p.st.maxHp; p.mp = p.st.maxMp;
 }
@@ -354,25 +358,34 @@ function calcStats(p) {
   }
   const lv = id => { const b = p.skills[id] || 0; return b > 0 ? b + s.allSkills : 0; };
   const buffs = p.buffs || {};
-  const w = p.equip.weapon;
+  const C = clsOf(p);
+  // 別的職業的武器拿在手上也不算（舊存檔或測試時可能發生）
+  const w = p.equip.weapon && (weaponCls(p.equip.weapon) || 'ninja') === (p.cls || 'ninja') ? p.equip.weapon : null;
+  const wt = w ? WTYPE[w.wkey] : null;
   const base = w ? w.dmg : [1, 3];
   const bless = buffs.bless > 0 ? 0.25 : 0;
+  s.melee = wt ? !!wt.melee : C.weapon === 'katana';
   s.dmgMin = base[0] + s.flatDmg; s.dmgMax = base[1] + s.flatDmg;
-  s.range = w ? w.range : 5;
-  s.dmgMult = 1 + s.str * 0.01 + s.dmgPct / 100 + lv('overload') * 0.07 + bless;
+  s.range = w ? w.range : s.melee ? 1.4 : 5;
+  const kiai = buffs.kiai > 0 ? (20 + lv('kiai') * 2) / 100 : 0;
+  s.dmgMult = 1 + s.str * 0.01 + s.dmgPct / 100 + lv('overload') * 0.07 + lv('bushido') * 0.06 + kiai + bless;
   s.bulletMult = 1 + lv('pierce') * 0.05;
+  s.meleeMult = 1 + lv('kenshin') * 0.06;
   s.pierce = lv('pierce') ? Math.min(80, 15 + lv('pierce') * 4) : 0;
   const stim = buffs.stim > 0 ? (30 + lv('stim') * 3) / 100 : 0;
-  s.aps = 2.0 * (w ? w.spd : 1) * (1 + s.atkSpd / 100 + s.dex * 0.003 + stim);
-  s.critC = Math.min(75, 5 + s.crit + s.dex * 0.05 + lv('precision'));
-  s.critD = 50 + s.critDmg + lv('precision') * 8;
-  s.maxHp = Math.round((60 + p.level * 4 + s.vit * 4 + s.hp) * (1 + lv('plating') * 0.04));
+  s.aps = 2.0 * (w ? w.spd : 1) * (1 + s.atkSpd / 100 + s.dex * 0.003 + stim + lv('kenshin') * 0.015);
+  s.critC = Math.min(75, 5 + s.crit + s.dex * 0.05 + lv('precision') + lv('shingan'));
+  s.critD = 50 + s.critDmg + (lv('precision') + lv('shingan')) * 8;
+  s.lifeSteal += lv('bushido') * 0.5;
+  s.maxHp = Math.round((60 + p.level * 4 + s.vit * 4 + s.hp) * (1 + lv('plating') * 0.04 + lv('goutai') * 0.05));
   s.maxMp = Math.round(30 + p.level * 1.5 + s.ene * 2 + s.mp);
-  s.defense = Math.round((itemDef + s.def + s.dex * 0.5) * (1 + lv('plating') * 0.12) * (1 + bless));
+  s.defense = Math.round((itemDef + s.def + s.dex * 0.5) * (1 + lv('plating') * 0.12 + lv('goutai') * 0.15) * (1 + bless));
   s.hpReg = 0.5 + p.level * 0.05 + s.hpRegen;
   s.mpReg = 1.2 + s.ene * 0.05 + s.mpRegen + lv('overload') * 0.6;
   s.moveSpeed = 4.0 * (1 + s.moveSpd / 100 + (buffs.stim > 0 ? 0.3 : 0));
-  s.drTotal = Math.min(50, s.dr); s.cdrTotal = Math.min(50, s.cdr);
+  s.drTotal = Math.min(50, s.dr + C.dr);
+  if (buffs.kongou > 0) s.drTotal = Math.min(75, s.drTotal + Math.min(45, 25 + lv('kongou')));
+  s.cdrTotal = Math.min(50, s.cdr);
   s.lv = lv;
   return s;
 }
@@ -397,15 +410,41 @@ function fireBullet(src, ang, mult, opt = {}) {
   G.bullets.push({
     x: ox, y: oy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: range / sp,
     mult: mult * P.st.bulletMult, pierce: opt.pierce !== undefined ? opt.pierce : P.st.pierce,
-    hit: new Set(), color: opt.color || '#ffe9a0', w: opt.w || 1.6,
+    hit: new Set(), color: opt.color || '#ffe9a0', w: opt.w || 1.6, kind: opt.kind,
   });
-  if (src === P) { P.muzzle = 0.06; P.act = { n: 'shoot', t: 0, dur: clamp(1 / P.st.aps, 0.15, 0.4) }; Snd.play('throw'); }
+  if (src === P) { P.muzzle = 0.06; P.act = { n: 'shoot', t: 0, dur: clamp(1 / P.st.aps, 0.15, 0.4) }; Snd.play(opt.kind === 'blade' ? 'slash' : 'throw'); }
 }
+// 近戰揮砍：以玩家為中心、朝 ang 的扇形（arc = 角度寬，2π = 一整圈），reach = 距離
+function meleeSwing(ang, mult, arc, reach, color = '255,255,255', quiet = false) {
+  let n = 0;
+  for (const e of G.enemies) {
+    if (e.dead) continue;
+    const d = dist(e, P);
+    if (d > reach + e.r) continue;
+    if (arc < 6.2 && d > 0.3) {
+      let da = Math.abs(Math.atan2(e.y - P.y, e.x - P.x) - ang) % (Math.PI * 2);
+      if (da > Math.PI) da = Math.PI * 2 - da;
+      if (da > arc / 2 + Math.atan2(e.r, d)) continue;
+    }
+    if (!shotClear(P.x, P.y, e.x, e.y)) continue;
+    hitEnemy(e, mult * P.st.meleeMult); n++;
+  }
+  G.fx.push({ type: 'slash', x: P.x, y: P.y, ang, arc, r: reach, t: 0, dur: 0.2, color });
+  if (!quiet) { P.act = { n: 'shoot', t: 0, dur: clamp(1 / P.st.aps, 0.15, 0.35) }; Snd.play('slash'); }
+  if (n >= 3) G.shake = Math.max(G.shake, 2);
+  return n;
+}
+// 技能 / 攻擊的有效距離：遠程技能有自己的距離，其他用武器距離
+const attackReach = id => (SKILLS[id] && SKILLS[id].reach) || P.st.range;
+const inReach = (id, e) => dist(P, e) <= attackReach(id) + (P.st.melee && !(SKILLS[id] && SKILLS[id].reach) ? e.r - 0.15 : -0.3);
+
 function basicAttack(tx, ty) {
   const ang = Math.atan2(ty - P.y, tx - P.x);
   P.face = ang;
   const w = P.equip.weapon;
-  if (w && w.wkey === 'shotgun') {
+  if (P.st.melee) {
+    meleeSwing(ang, 1, w && w.wkey === 'naginata' ? 1.2 : w && w.wkey === 'odachi' ? 2.4 : 1.9, P.st.range);
+  } else if (w && w.wkey === 'shotgun') {
     for (let i = 0; i < 4; i++) fireBullet(P, ang + (i - 1.5) * 0.12, 0.4, { speed: rand(14, 17), color: '#ffb060' });
   } else if (w && w.wkey === 'rail') {
     fireBullet(P, ang, 1, { speed: 26, pierce: 100, color: '#9ff', w: 4 });
@@ -422,7 +461,7 @@ function castSkill(id, w, held) {
   if (!lv) { if (!held) addLog(`尚未學習「${sk.name}」（按 K 開啟技能樹）`, '#aaa'); return false; }
   if (sk.type !== 'active') return false;
   if (p.cds[id] > 0) return false;
-  if ((id === 'burst' || id === 'scatter') && p.atkCd > 0) return false;
+  if (sk.atk && p.atkCd > 0) return false;
   const mana = Math.round(sk.mana(lv));
   if (p.mp < mana) {
     if (G.t - G.manaMsgT > 1.5) { G.manaMsgT = G.t; floatText(p.x, p.y, '魔力不足', '#6af', 13); }
@@ -476,9 +515,71 @@ function castSkill(id, w, held) {
       G.fx.push({ type: 'orbital', x: tx, y: ty, t: 0, delay: 1.0, r: 3.2, mult: (600 + lv * 70) / 100, fired: false });
       break;
     }
+    // ---- 武士 ----
+    case 'iai': {
+      p.face = ang; p.path = []; p.target = null;
+      meleeSwing(ang, (130 + lv * 14) / 100, 2.6, s.range + 0.5, '255,200,160');
+      p.atkCd = 1 / s.aps * 1.15;
+      break;
+    }
+    case 'tsubame': {
+      p.face = ang; p.path = []; p.target = null;
+      meleeSwing(ang, (110 + lv * 12) / 100, Math.PI * 2, s.range + 0.7, '255,170,150');
+      p.atkCd = 1 / s.aps * 1.3; G.shake = Math.max(G.shake, 3);
+      break;
+    }
+    case 'senjin': p.buffs.senjin = 2.5 + lv * 0.1; p.senT = 0; break;
+    case 'kiai': {
+      for (const e of G.enemies) if (!e.dead && dist(e, p) < 4.5) { e.stun = Math.max(e.stun || 0, (1 + lv * 0.1) * (e.type === 'boss' ? 0.4 : 1)); aggro(e); }
+      p.buffs.kiai = 8;
+      G.fx.push({ type: 'ring', x: p.x, y: p.y, t: 0, dur: 0.5, r: 4.5, color: '255,140,90' });
+      floatText(p.x, p.y, '喝！', '#ff8a5a', 22, 1.1);
+      G.shake = Math.max(G.shake, 6);
+      break;
+    }
+    case 'kongou': p.buffs.kongou = 6 + lv * 0.3; burst(p.x, p.y, 20, '#ffd25a', { sp: 2, z: 30 }); break;
+    case 'shippu': {
+      // 往前衝，撞到牆就停
+      const sx = p.x, sy = p.y, len = Math.min(5, Math.max(2.5, dTo));
+      let ex = sx, ey = sy;
+      for (let d = 0.2; d <= len + 1e-6; d += 0.2) {
+        const nx = sx + Math.cos(ang) * d, ny = sy + Math.sin(ang) * d;
+        if (!canStand(nx, ny, p.r)) break;
+        ex = nx; ey = ny;
+      }
+      p.x = ex; p.y = ey; p.path = []; p.target = null; p.face = ang;
+      const segL = Math.hypot(ex - sx, ey - sy) || 0.01, mult = (150 + lv * 18) / 100;
+      for (const e of G.enemies) {
+        if (e.dead) continue;
+        const k = clamp(((e.x - sx) * (ex - sx) + (e.y - sy) * (ey - sy)) / (segL * segL), 0, 1);
+        if (Math.hypot(e.x - (sx + (ex - sx) * k), e.y - (sy + (ey - sy) * k)) < 0.9 + e.r) hitEnemy(e, mult * s.meleeMult);
+      }
+      G.fx.push({ type: 'dash', sx, sy, x: ex, y: ey, t: 0, dur: 0.35, face: ang });
+      p.act = { n: 'shoot', t: 0, dur: 0.3 }; Snd.play('slash');
+      break;
+    }
+    case 'kamaitachi': {
+      fireBullet(p, ang, (100 + lv * 13) / 100, { speed: 13, range: 8, pierce: 100, kind: 'blade', color: '#8ef' });
+      p.atkCd = 1 / s.aps * 1.2; p.path = []; p.target = null; p.face = ang;
+      break;
+    }
+    case 'raijin': {
+      // 目標處站不下就往回找最近能站的地方
+      let tx = p.x, ty = p.y;
+      for (let d = Math.min(8, dTo); d > 0; d -= 0.25) {
+        const nx = p.x + Math.cos(ang) * d, ny = p.y + Math.sin(ang) * d;
+        if (canStand(nx, ny, p.r) && clearLine(p.x, p.y, nx, ny, 0.1)) { tx = nx; ty = ny; break; }
+      }
+      G.fx.push({ type: 'tele', x: p.x, y: p.y, t: 0 });
+      p.x = tx; p.y = ty; p.path = []; p.target = null; p.face = ang;
+      explode(tx, ty, 3, (450 + lv * 55) / 100, '120,220,255');
+      G.fx.push({ type: 'orbital', x: tx, y: ty, t: 0, delay: 0, r: 3, mult: 0, fired: true });
+      G.shake = 14;
+      break;
+    }
   }
   p.mp -= mana;
-  if (['grenade', 'turret', 'orbital', 'shield', 'stim', 'gatling'].includes(id)) { p.act = { n: id === 'grenade' ? 'swing' : 'cast', t: 0, dur: 0.4 }; Snd.play(id === 'grenade' ? 'throw' : 'magic'); }
+  if (['grenade', 'turret', 'orbital', 'shield', 'stim', 'gatling', 'senjin', 'kiai', 'kongou', 'raijin'].includes(id)) { p.act = { n: id === 'grenade' ? 'swing' : 'cast', t: 0, dur: 0.4 }; Snd.play(id === 'grenade' ? 'throw' : id === 'kiai' ? 'crit' : 'magic'); }
   const cd = sk.cd(lv);
   if (cd > 0) { p.cds[id] = cd * (1 - s.cdrTotal / 100); p.cdMax[id] = p.cds[id]; }
   return true;
@@ -664,6 +765,7 @@ function updateEnemies(dt) {
   for (const e of G.enemies) {
     if (e.dead) continue;
     e.hitFlash -= dt; e.atkAnim -= dt; e.castAnim -= dt; e.atkCd -= dt; e.mv = false;
+    if (e.stun > 0) { e.stun -= dt; continue; }   // 暈眩：不動也不攻擊
     const d = dist(e, P);
     if (!e.aggro && !P.dead && !pInCamp && d < 8.5 && shotClear(e.x, e.y, P.x, P.y)) aggro(e);
     if (e.aggro && (P.dead || pInCamp || d > 22)) { e.aggro = false; e.path = null; }
@@ -749,7 +851,8 @@ function dropLoot(e) {
   for (let i = 0; i < n; i++) {
     let r = Math.max(minR, rollRarity(mf, bonus));
     if (e.rank === 3 && i === 0) r = 3;
-    spawnGround(e.x, e.y, { item: genItem(e.lvl + rint(0, 2), r) });
+    // 武器 75% 是自己職業能用的
+    spawnGround(e.x, e.y, { item: genItem(e.lvl + rint(0, 2), r, null, null, Math.random() < 0.75 ? P.cls : null) });
   }
   if (Math.random() < 0.4 || e.rank > 0) spawnGround(e.x, e.y, { gold: Math.max(1, Math.round(e.lvl * rand(2, 6) * (1 + e.rank))) });
   if (Math.random() < 0.07) spawnGround(e.x, e.y, { potion: Math.random() < 0.6 ? 'hp' : 'mp' });
@@ -780,14 +883,47 @@ function pickupItem(g) {
   if (isOpen('inv')) renderInv();
 }
 
+// 拾取鍵（F）：撿起附近最近的裝備；在旁邊就直接撿，遠一點（8 格內）就走過去撿
+const PICK_NEAR = 1.6, PICK_FAR = 8;
+const nearestItem = (maxD = PICK_FAR) => {
+  let best = null, bd = maxD;
+  for (const g of G.ground) { if (!g.item) continue; const d = Math.hypot(g.x - P.x, g.y - P.y); if (d < bd) { bd = d; best = g; } }
+  return best;
+};
+function pickupNearest() {
+  if (P.dead) return;
+  const g = nearestItem();
+  if (!g) { floatText(P.x, P.y, '附近沒有裝備', '#aaa', 12); return; }
+  if (Math.hypot(g.x - P.x, g.y - P.y) <= PICK_NEAR) { P.goal = null; pickupItem(g); return; }
+  P.target = null; P.goal = { kind: 'pickup', ref: g }; setPath(g.x, g.y);
+}
+
 // =====================================================
 //  互動：商人、神龕
 // =====================================================
 function doGoal(g) {
   if (g.kind === 'pickup') { if (G.ground.includes(g.ref)) pickupItem(g.ref); }
   else if (g.ref.type === 'merchant') openShop();
+  else if (g.ref.type === 'guard') talkGuard(g.ref);
   else if (g.ref.type === 'shrine') useShrine(g.ref);
   else if (g.ref.type === 'portal') openPanel('travel');
+}
+const TALKABLE = ['merchant', 'guard', 'shrine', 'portal'];
+// 營地的武士：每次對話輪流說一句提示
+const GUARD_LINES = [
+  '旅人，營地裡很安全，妖怪不會追進來。受了傷就回來歇歇吧。',
+  '在外面按 T，或打開選單按「回營地」，就能隨時傳送回來。',
+  '地上的裝備太多撿不完？電腦按 F，手機按「拾取」，就會撿起附近的裝備。',
+  '打倒一百隻妖怪，這一帶的首領就會現身。小心，它會放出一圈火球。',
+  '野外的地藏像可以回滿生命和魔力，還會加持一段時間。',
+  '營地南邊的傳送陣能帶你去更遠、更危險的地方。',
+  '行商源藏那裡可以買藥水，也能把用不到的裝備賣掉換錢。',
+];
+function talkGuard(g) {
+  g.talk = ((g.talk || 0) % GUARD_LINES.length) + 1;
+  const name = g.name || '武士';
+  showSheet(`<div class="tipName" style="color:#ffd98a">${name}</div><div style="margin-top:6px;line-height:1.6">「${GUARD_LINES[g.talk - 1]}」</div>`, [['再聊聊', () => talkGuard(g)]]);
+  Snd.play('ui');
 }
 function useShrine(s) {
   if (s.cd > 0) { addLog(`地藏的力量正在恢復（${Math.ceil(s.cd)} 秒）`, '#aaa'); return; }
@@ -805,7 +941,7 @@ function openShop() {
     G.shopLevel = P.level;
     G.shopStock = [];
     for (let i = 0; i < 6; i++) {
-      const it = genItem(P.level + rint(0, 2), Math.random() < 0.15 ? 2 : 1);
+      const it = genItem(P.level + rint(0, 2), Math.random() < 0.15 ? 2 : 1, null, null, P.cls);
       it.buyPrice = it.price * 4;
       G.shopStock.push(it);
     }
@@ -844,7 +980,7 @@ function updateFx(dt) {
     if (f.type === 'orbital' && f.t >= f.delay && !f.fired) { f.fired = true; explode(f.x, f.y, f.r, f.mult, '120,220,255'); G.shake = 14; }
   }
   G.fx = G.fx.filter(f => !(
-    (f.type === 'grenade' && f.done) || (f.type === 'boom' && f.t > f.dur) || (f.type === 'orbital' && f.t > f.delay + 0.6) ||
+    (f.type === 'grenade' && f.done) || ((f.type === 'boom' || f.type === 'slash' || f.type === 'dash' || f.type === 'ring') && f.t > f.dur) || (f.type === 'orbital' && f.t > f.delay + 0.6) ||
     (f.type === 'levelup' && f.t > 1.4) || (f.type === 'click' && f.t > 0.4) || (f.type === 'tele' && f.t > 0.8)));
 
   for (const p of G.parts) {
@@ -928,6 +1064,14 @@ function updatePlayer(dt) {
       fireBullet(p, ang + rand(-0.09, 0.09), (55 + s.lv('gatling') * 6) / 100);
     }
   }
+  if (p.buffs.senjin > 0) {   // 千刃旋風：每 0.2 秒砍一圈
+    p.senT -= dt;
+    while (p.senT <= 0) {
+      p.senT += 0.2;
+      meleeSwing(G.t * 9, (50 + s.lv('senjin') * 6) / 100, Math.PI * 2, 2.3, '255,150,130', true);
+      Snd.play('slash', 0.6);
+    }
+  }
 
   const m = G.mouse;
   if (m.down && G.keys.shift) {
@@ -947,8 +1091,7 @@ function updatePlayer(dt) {
     const t = p.target;
     if (t.dead || !G.enemies.includes(t)) p.target = null;
     else {
-      const d = dist(p, t);
-      if (d <= s.range - 0.3 && shotClear(p.x, p.y, t.x, t.y)) {
+      if (inReach(validSkill(p.leftSkill), t) && shotClear(p.x, p.y, t.x, t.y)) {
         p.path = [];
         p.face = Math.atan2(t.y - p.y, t.x - p.x);
         useSkill(p.leftSkill, t, true);
@@ -1044,8 +1187,9 @@ function computeHover() {
   }
   if (!h) {
     for (const p of G.props) {
-      if (p.type !== 'merchant' && p.type !== 'shrine' && p.type !== 'portal') continue;
-      const s = toScreen(p.x, p.y), hw = p.type === 'shrine' ? 26 : 16, hh = p.type === 'shrine' ? 70 : 40;
+      if (!TALKABLE.includes(p.type)) continue;
+      // 手指比滑鼠粗：手機上點擊範圍放大
+      const big = TOUCH ? 1.5 : 1, s = toScreen(p.x, p.y), hw = (p.type === 'shrine' ? 26 : 16) * big, hh = (p.type === 'shrine' ? 70 : 40) * big;
       if (Math.abs(mx - s.x) < hw && my < s.y + 8 && my > s.y - hh) { h = { kind: 'prop', ref: p }; break; }
     }
   }
@@ -1267,7 +1411,7 @@ function render() {
   }
   for (const t of G.turrets) { const s = toScreen(t.x, t.y); draws.push({ d: t.x + t.y, f: () => drawTurret(ctx, s.x, s.y, t, G.t) }); }
   draws.push({ d: P.x + P.y, f: () => drawHero(ctx, ps.x, ps.y, P) });
-  for (const b of G.bullets) draws.push({ d: b.x + b.y, f: () => drawProjectile(ctx, b, 'shuriken') });
+  for (const b of G.bullets) draws.push({ d: b.x + b.y, f: () => drawProjectile(ctx, b, b.kind || 'shuriken') });
   for (const b of G.ebullets) draws.push({ d: b.x + b.y, f: () => {
     if (b.kind) { drawProjectile(ctx, b, b.kind); return; }
     const s = toScreen(b.x, b.y);
@@ -1344,6 +1488,42 @@ function drawEffects() {
         g.addColorStop(0, 'rgba(80,180,255,0)'); g.addColorStop(0.5, `rgba(220,250,255,${1 - k})`); g.addColorStop(1, 'rgba(80,180,255,0)');
         ctx.fillStyle = g; ctx.fillRect(s.x - w, 0, w * 2, s.y);
       }
+      ctx.restore();
+    } else if (f.type === 'slash') {
+      // 刀光：沿著扇形畫一道新月，從起點掃到終點後淡出
+      const k = f.t / f.dur, full = f.arc >= 6.2, a0 = full ? f.ang : f.ang - f.arc / 2;
+      const sweep = full ? Math.PI * 2 : f.arc, head = Math.min(1, k * 2.2), tail = Math.max(0, k * 2.2 - 1.2);
+      const pt = (a, r) => { const s = toScreen(f.x + Math.cos(a) * r, f.y + Math.sin(a) * r); return [s.x, s.y - 14]; };
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const n = 14, ri = f.r * 0.45, ro = f.r;
+      ctx.beginPath();
+      for (let i = 0; i <= n; i++) { const [x, y] = pt(a0 + sweep * (tail + (head - tail) * i / n), ro); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      for (let i = n; i >= 0; i--) { const a = a0 + sweep * (tail + (head - tail) * i / n); const [x, y] = pt(a, ro - (ro - ri) * Math.sin(Math.PI * i / n)); ctx.lineTo(x, y); }
+      ctx.closePath();
+      ctx.fillStyle = `rgba(${f.color},${0.35 * (1 - k)})`; ctx.fill();
+      ctx.beginPath();
+      for (let i = 0; i <= n; i++) { const [x, y] = pt(a0 + sweep * (tail + (head - tail) * i / n), ro); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+      ctx.strokeStyle = `rgba(255,255,255,${0.95 * (1 - k)})`; ctx.lineWidth = 3; ctx.stroke();
+      ctx.restore();
+    } else if (f.type === 'dash') {
+      // 疾風斬：沿路留下殘影 + 一道白光
+      const k = f.t / f.dur, a = toScreen(f.sx, f.sy), b = toScreen(f.x, f.y);
+      ctx.save();
+      for (let i = 1; i <= 3; i++) {
+        const q = i / 4;
+        ctx.globalAlpha = 0.35 * (1 - k) * q;
+        drawHero(ctx, a.x + (b.x - a.x) * q, a.y + (b.y - a.y) * q, { cls: P.cls, face: f.face, buffs: {}, moving: 1, runT: q, act: null });
+      }
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(255,230,200,${0.9 * (1 - k)})`; ctx.lineWidth = 4 * (1 - k) + 1;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y - 14); ctx.lineTo(b.x, b.y - 14); ctx.stroke();
+      ctx.restore();
+    } else if (f.type === 'ring') {
+      const s = toScreen(f.x, f.y), k = f.t / f.dur, rx = f.r * TW / 2 * (0.2 + k * 0.8);
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = `rgba(${f.color},${1 - k})`; ctx.lineWidth = 5 * (1 - k) + 1;
+      ell(ctx, s.x, s.y, rx, rx / 2); ctx.stroke();
+      ell(ctx, s.x, s.y, rx * 0.7, rx * 0.35); ctx.stroke();
       ctx.restore();
     } else if (f.type === 'levelup' || f.type === 'tele') {
       const s = toScreen(f.x, f.y), dur = f.type === 'levelup' ? 1.4 : 0.8, k = f.t / dur;
@@ -1554,13 +1734,17 @@ function addLog(text, color = '#ddd') {
 const PANELS = { char: 'panelChar', inv: 'panelInv', skill: 'panelSkill', shop: 'panelShop', travel: 'panelTravel' };
 const LEFT = ['char', 'skill', 'shop'];
 const isOpen = k => !$(PANELS[k]).classList.contains('hidden');
+// 手機一次只開一個視窗；例外：商店和背包一起開（左右各半），才能買賣
+const panelPair = (a, b) => (a === 'shop' && b === 'inv') || (a === 'inv' && b === 'shop');
 function openPanel(k) {
-  if (TOUCH) { for (const o in PANELS) if (o !== k) closePanel(o); }
+  if (TOUCH) { for (const o in PANELS) if (o !== k && !panelPair(o, k)) closePanel(o); }
   else if (LEFT.includes(k)) for (const o of LEFT) if (o !== k) closePanel(o);
   $(PANELS[k]).classList.remove('hidden');
   renderPanel(k);
+  layoutDuo();
 }
-function closePanel(k) { $(PANELS[k]).classList.add('hidden'); if (k === 'shop') G.shopOpen = false; hideTip(); }
+function closePanel(k) { $(PANELS[k]).classList.add('hidden'); if (k === 'shop') G.shopOpen = false; hideTip(); layoutDuo(); }
+function layoutDuo() { document.documentElement.classList.toggle('duo', TOUCH && isOpen('shop') && isOpen('inv')); }
 function togglePanel(k) { isOpen(k) ? closePanel(k) : openPanel(k); }
 function renderPanel(k) { ({ char: renderChar, inv: renderInv, skill: renderSkills, shop: renderShop, travel: renderTravel })[k](); }
 
@@ -1597,7 +1781,7 @@ function refreshPanels() { for (const k in PANELS) if (isOpen(k)) renderPanel(k)
 // ---------- 提示框 ----------
 const tip = $('tooltip');
 function showTip(html) { tip.innerHTML = html; tip.classList.remove('hidden'); placeTip(); }
-function hideTip() { tip.classList.add('hidden'); tip.classList.remove('sheet'); }
+function hideTip() { tip.classList.add('hidden'); tip.classList.remove('sheet', 'wide'); }
 function placeTip() {
   if (tip.classList.contains('hidden') || tip.classList.contains('sheet')) return;
   const r = tip.getBoundingClientRect();
@@ -1612,8 +1796,10 @@ function itemHtml(it, head, priceLabel) {
   let h = head ? `<div class="tipHead">${head}</div>` : '';
   h += `<div class="tipName" style="color:${R.color}">${it.name}</div>`;
   h += `<div class="tipSub">${R.name} · ${SLOT_NAMES[it.slot]} · 物品等級 ${it.ilvl}</div>`;
-  if (it.dmg) h += `<div>傷害：<b>${it.dmg[0]} - ${it.dmg[1]}</b></div><div>攻擊速度：${it.spd.toFixed(2)}　射程：${it.range}</div>`;
+  if (it.dmg) h += `<div>傷害：<b>${it.dmg[0]} - ${it.dmg[1]}</b></div><div>攻擊速度：${it.spd.toFixed(2)}　${WTYPE[it.wkey] && WTYPE[it.wkey].melee ? '攻擊距離' : '射程'}：${it.range}</div>`;
   if (it.def) h += `<div>防禦：<b>${it.def}</b></div>`;
+  const wc = weaponCls(it);
+  if (wc) h += `<div style="color:${canUse(it) ? '#bbb' : '#ff5555'}">${CLASSES[wc].name}專用</div>`;
   h += `<div style="color:${P.level >= it.req ? '#bbb' : '#ff5555'}">需要等級：${it.req}</div>`;
   for (const a of it.affixes) h += `<div class="aff">${AFFIXES[a.k].t.replace('{v}', a.v)}</div>`;
   h += `<div class="tipPrice">${priceLabel || '售價'}：${it.buyPrice && priceLabel ? it.buyPrice : it.price} 金幣</div>`;
@@ -1631,13 +1817,37 @@ function showItemSheet(it, where, key) {
   const acts = [];
   if (where === 'shop') acts.push(['購買', () => buyItem(key)]);
   else if (where === 'inv') {
-    acts.push(G.shopOpen ? ['出售', () => sellItem(key)] : ['裝備', () => equipItem(key)]);
+    if (G.shopOpen) acts.push(['出售', () => sellItem(key)]);
+    else if (it.slot === 'ring' && P.equip.ring1 && P.equip.ring2) acts.push(['換掉中間那只', () => equipItem(key, 'ring1')], ['換掉右邊那只', () => equipItem(key, 'ring2')]);
+    else acts.push(['裝備', () => equipItem(key)]);
     acts.push(['丟棄', () => dropItem(where, key)]);
   } else { acts.push(['卸下', () => unequip(key)]); acts.push(['丟棄', () => dropItem(where, key)]); }
-  showSheet(itemHtml(it, null, where === 'shop' ? '購買價格' : null) + (where !== 'equip' ? compareHtml(it) : ''), acts);
+  const main = itemHtml(it, where === 'shop' ? '商品' : where === 'equip' ? '目前裝備' : '背包物品', where === 'shop' ? '購買價格' : null);
+  const olds = where === 'equip' ? [] : (it.slot === 'ring' ? ['ring1', 'ring2'] : [it.slot]).map(s => P.equip[s]).filter(Boolean);
+  if (!olds.length) { showSheet(main, acts); return; }
+  // 手機是橫的：左邊這件、右邊目前穿的，並排比較；底下列出差異
+  const cols = [main, ...olds.map(o => itemHtml(o, '目前裝備') + diffHtml(it, o))];
+  showSheet(`<div class="cmpRow">${cols.map(c => `<div class="cmpCol">${c}</div>`).join('')}</div>`, acts);
+  tip.classList.add('wide');
+}
+// 換上 it 之後，跟 old 相比的變化（綠色變好、紅色變差）
+function diffHtml(it, old) {
+  const rows = [], add = (name, d, unit = '') => { if (d) rows.push(`<div style="color:${d > 0 ? '#6f6' : '#f66'}">${name} ${d > 0 ? '+' : ''}${d}${unit}</div>`); };
+  if (it.dmg && old.dmg) add('平均傷害', Math.round((it.dmg[0] + it.dmg[1]) / 2 - (old.dmg[0] + old.dmg[1]) / 2));
+  add('防禦', (it.def || 0) - (old.def || 0));
+  const sum = x => { const m = {}; for (const a of x.affixes) m[a.k] = (m[a.k] || 0) + a.v; return m; };
+  const a = sum(it), b = sum(old);
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const d = (a[k] || 0) - (b[k] || 0);
+    if (!d) continue;
+    const t = AFFIXES[k].t, label = k === 'cdr' ? '冷卻縮減' : t.replace(/^[+-]?\{v\}%?\s*/, '');
+    add(label, d, t.includes('{v}%') ? '%' : '');
+  }
+  return `<div class="tipSep"></div><div class="tipHead">換上左邊這件的變化</div>` + (rows.length ? `<div class="diff">${rows.join('')}</div>` : '<div class="dim">沒有差別</div>');
 }
 // 說明框 + 按鈕；按鈕按下後執行動作並關閉
 function showSheet(html, acts) {
+  tip.classList.remove('wide');
   tip.innerHTML = html + '<div class="sheetBtns">' + acts.map((a, i) => `<button data-i="${i}">${a[0]}</button>`).join('') + '<button data-i="x">關閉</button></div>';
   tip.classList.add('sheet'); tip.classList.remove('hidden');
   tip.querySelectorAll('.sheetBtns button').forEach(b => {
@@ -1681,7 +1891,7 @@ function slotEl(it) {
       d.style.background = `radial-gradient(circle, ${RARITIES[it.rarity].color}44, rgba(0,0,0,0.5) 70%)`;
       d.innerHTML = `<img class="pix wpn" src="${NA + w.file}"${w.crop ? ' style="object-fit:cover;object-position:left center"' : ''}>`;
     } else d.innerHTML = `<img src="${itemIcon(it)}">`;
-    if (it.req > P.level) d.classList.add('cant');
+    if (it.req > P.level || !canUse(it)) d.classList.add('cant');
   }
   return d;
 }
@@ -1700,11 +1910,15 @@ function renderInv() {
 }
 // 背包裡壞掉的格子（undefined）一律當成空格
 function fixInv() { for (let i = 0; i < P.inv.length; i++) if (!P.inv[i]) P.inv[i] = null; }
-function equipItem(i) {
+// 武器只有對應的職業能用；其他裝備大家都能穿
+const canUse = it => { const c = weaponCls(it); return !c || c === (P.cls || 'ninja'); };
+// ringSlot：兩只戒指都戴著時，指定要換掉哪一只（不給就換第一只）
+function equipItem(i, ringSlot) {
   const it = P.inv[i];
+  if (!canUse(it)) { addLog(`${it.name}是${CLASSES[weaponCls(it)].name}專用的武器。`, '#f88'); Snd.play('cancel'); return; }
   if (it.req > P.level) { addLog(`等級不足，需要 ${it.req} 級。`, '#f88'); return; }
   let slot = it.slot;
-  if (slot === 'ring') slot = !P.equip.ring1 ? 'ring1' : !P.equip.ring2 ? 'ring2' : 'ring1';
+  if (slot === 'ring') slot = ringSlot || (!P.equip.ring1 ? 'ring1' : !P.equip.ring2 ? 'ring2' : 'ring1');
   const old = P.equip[slot];
   P.equip[slot] = it; P.inv[i] = old || null;
   afterGearChange();
@@ -1773,7 +1987,8 @@ const STAT_INFO = { str: ['力量', '每點 +1% 傷害'], dex: ['敏捷', '每�
 function renderChar() {
   const s = P.st, need = expNext(P.level);
   const red = Math.round(Math.min(0.8, s.defense / (s.defense + 25 + P.level * 12)) * 100);
-  let h = `<div class="charHead"><div><div class="cName">忍者</div><div class="cSub">青葉之里的影 · 綠忍</div></div><div class="cLv">Lv ${P.level}</div></div>`;
+  const C = clsOf(P);
+  let h = `<div class="charHead"><div><div class="cName">${C.name}</div><div class="cSub">${C.sub}</div></div><div class="cLv">Lv ${P.level}</div></div>`;
   h += `<div class="cExp">經驗值 ${P.level >= MAX_LEVEL ? '已達最高等級' : `${Math.floor(P.exp).toLocaleString()} / ${need.toLocaleString()}`}</div>`;
   h += `<div class="cPts">剩餘屬性點：<b>${P.statPts}</b>${P.statPts ? '　<span class="dim">(Shift+點擊 一次加 10 點)</span>' : ''}</div>`;
   for (const k of ['str', 'dex', 'vit', 'ene']) {
@@ -1822,7 +2037,7 @@ function skillHtml(id) {
 function renderSkills() {
   $('skillPts').textContent = P.skillPts;
   const box = $('skillTrees'); box.innerHTML = '';
-  for (const tree of SKILL_TREES) {
+  for (const tree of clsOf(P).trees) {
     const col = document.createElement('div'); col.className = 'tree';
     col.innerHTML = `<div class="treeName" style="color:${tree.color}">${tree.name}</div>`;
     for (const id of tree.skills) {
@@ -1885,6 +2100,9 @@ function updateHUD() {
   if (P.buffs.shield) b.push(`<span style="color:#6ef">護盾 ${Math.ceil(P.shield)}</span>`);
   if (P.buffs.bless) b.push(`<span style="color:#ffd98a">地藏加護 ${P.buffs.bless.toFixed(0)}s</span>`);
   if (P.buffs.gatling) b.push(`<span style="color:#ff9f43">千本嵐 ${P.buffs.gatling.toFixed(1)}s</span>`);
+  if (P.buffs.senjin) b.push(`<span style="color:#ff8a7a">千刃旋風 ${P.buffs.senjin.toFixed(1)}s</span>`);
+  if (P.buffs.kiai) b.push(`<span style="color:#ff9a6a">氣合 ${P.buffs.kiai.toFixed(0)}s</span>`);
+  if (P.buffs.kongou) b.push(`<span style="color:#ffd25a">金剛身 ${P.buffs.kongou.toFixed(0)}s</span>`);
   if (P.cds.town) b.push(`<span style="color:#8cf">傳送冷卻 ${P.cds.town.toFixed(0)}s</span>`);
   $('buffs').innerHTML = b.join('');
   // 目標資訊
@@ -1961,6 +2179,7 @@ addEventListener('keydown', safe(e => {
   if (e.repeat && 'cik'.includes(k)) return;
   if (k >= '1' && k <= '8') { if (!e.repeat) pressHotkey(+k - 1); return; }
   switch (k) {
+    case 'f': if (!e.repeat || G.t - (G.pickT || 0) > 0.2) { G.pickT = G.t; pickupNearest(); } break;
     case 'q': usePotion('hp'); break;
     case 'e': usePotion('mp'); break;
     case 'c': togglePanel('char'); break;
@@ -1995,16 +2214,17 @@ $('potMpBtn').onclick = () => usePotion('mp');
 function saveGame() {
   if (!P) return false;
   if (G.testMode) return 'test';
-  const keys = ['level', 'exp', 'str', 'dex', 'vit', 'ene', 'statPts', 'skillPts', 'skills', 'gold', 'inv', 'equip', 'potions', 'rightSkill', 'leftSkill', 'hotkeys', 'touchSkills', 'zone'];
+  const keys = ['cls', 'level', 'exp', 'str', 'dex', 'vit', 'ene', 'statPts', 'skillPts', 'skills', 'gold', 'inv', 'equip', 'potions', 'rightSkill', 'leftSkill', 'hotkeys', 'touchSkills', 'zone'];
   const d = { v: 1, savedAt: Date.now() };
   for (const k of keys) d[k] = P[k];
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); G.lastSave = d.savedAt; return true; } catch (e) { return false; }
+  try { localStorage.setItem(saveKey(P.cls), JSON.stringify(d)); G.lastSave = d.savedAt; return true; } catch (e) { return false; }
 }
-function loadGame() {
+function loadGame(cls) {
   try {
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = localStorage.getItem(saveKey(cls));
     if (!raw) return null;
-    const d = JSON.parse(raw), p = newPlayer();
+    const d = JSON.parse(raw), p = newPlayer(cls);
+    d.cls = cls;
     for (const k in d) if (k !== 'v' && k !== 'savedAt') p[k] = d[k];
     p.inv = p.inv.map(x => x || null);
     ensureSkillSlots(p);
@@ -2056,6 +2276,7 @@ $('optSfxOn').onchange = e => { Snd.setEnabled('sfx', e.target.checked); renderM
 document.querySelectorAll('#optQuality button').forEach(b => { b.onclick = () => { setQuality(+b.dataset.q); Snd.play('ui'); }; });
 document.querySelectorAll('#optHotkey button').forEach(b => { b.onclick = () => { setHotkeyMode(b.dataset.h); renderMenu(); renderHotbar(); Snd.play('ui'); }; });
 document.querySelectorAll('#optDir button').forEach(b => { b.onclick = () => { setDirMode(b.dataset.d); P && (P._dir = undefined); for (const e of G.enemies) e._dir = undefined; renderMenu(); Snd.play('ui'); }; });
+$('btnCamp').onclick = () => { closeMenu(); returnToCamp(); };
 $('btnSave').onclick = () => {
   const r = saveGame();
   if (r === true) { addLog('遊戲已儲存。', '#9f9'); Snd.play('ui'); }
@@ -2122,35 +2343,50 @@ async function startGame(p) {
   addLog(TOUCH ? '左下搖桿移動，按住「攻擊」自動攻擊；長按攻擊鍵或技能鍵可以換技能。' : 'WASD 或左鍵移動，空白鍵 / 左鍵用左鍵技能，右鍵用右鍵技能；點快捷列兩側的格子可以換技能。', '#ccc');
   saveGame();
 }
+// 標題畫面：點角色卡選職業，每個職業各有自己的存檔
+G.pickCls = (() => { try { return CLASSES[localStorage.getItem('dm_cls')] ? localStorage.getItem('dm_cls') : 'ninja'; } catch (e) { return 'ninja'; } })();
+function pickClass(cls) {
+  G.pickCls = cls;
+  try { localStorage.setItem('dm_cls', cls); } catch (e) { /* 忽略 */ }
+  document.querySelectorAll('.card.pick').forEach(c => c.classList.toggle('active', c.dataset.cls === cls));
+  refreshTitle();
+}
+document.querySelectorAll('.card.pick').forEach(c => c.addEventListener('click', () => { if (G.pickCls !== c.dataset.cls) { pickClass(c.dataset.cls); Snd.play('ui'); } }));
 $('btnNew').onclick = () => {
-  if (localStorage.getItem(SAVE_KEY) && !confirm('開始新角色會覆蓋目前的存檔，確定嗎？')) return;
-  startGame(newPlayer());
+  const C = CLASSES[G.pickCls];
+  if (readSave(G.pickCls) && !confirm(`建立新的${C.name}會覆蓋目前的${C.name}存檔，確定嗎？`)) return;
+  startGame(newPlayer(G.pickCls));
 };
-$('btnLoad').onclick = () => { const p = loadGame(); if (p) startGame(p); };
+$('btnLoad').onclick = () => { const p = loadGame(G.pickCls); if (p) startGame(p); };
 TouchUI.init();
 Snd.music('title');
 const fmtTime = t => new Date(t).toLocaleString('zh-TW', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 function refreshTitle() {
-  const p = (() => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)); } catch (e) { return null; } })();
+  const C = CLASSES[G.pickCls], p = readSave(G.pickCls);
   const b = $('btnLoad');
   b.classList.toggle('hidden', !p);
-  if (p) b.textContent = `繼續遊戲（忍者 Lv ${p.level}${p.savedAt ? '，' + fmtTime(p.savedAt) : ''}）`;
+  if (p) b.textContent = `繼續遊戲（${C.name} Lv ${p.level}${p.savedAt ? '，' + fmtTime(p.savedAt) : ''}）`;
+  if (!$('btnNew').disabled) $('btnNew').textContent = `建立新角色（${C.name}）`;
 }
-refreshTitle();
-const portrait = $('portrait'), pctx = portrait.getContext('2d');
-const portraitHero = { equip: {}, face: Math.PI / 2, buffs: {}, moving: 0 };
+pickClass(G.pickCls);
+const portraits = [...document.querySelectorAll('.card.pick')].map(card => ({
+  cv: card.querySelector('canvas'), cls: card.dataset.cls, hero: { cls: card.dataset.cls, equip: {}, face: Math.PI / 2, buffs: {}, moving: 0 },
+}));
 function drawPortrait(t) {
-  pctx.clearRect(0, 0, portrait.width, portrait.height);
-  const g = pctx.createRadialGradient(100, 150, 10, 100, 150, 110);
-  g.addColorStop(0, 'rgba(120,200,90,0.3)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-  pctx.fillStyle = g; pctx.fillRect(0, 0, 200, 240);
-  // 輪流面向下、右、上、左，偶爾擲出手裏劍
-  const dir = [0, 3, 1, 2][Math.floor(t / 1.6) % 4];
-  const shooting = (t % 3.2) > 2.6;
-  portraitHero.act = shooting ? { n: 'shoot', t: (t % 3.2) - 2.6, dur: 0.6 } : null;
   G.t = t;
-  pctx.imageSmoothingEnabled = false;
-  drawHero(pctx, 100, 220, portraitHero, 8, dir);
+  for (const pt of portraits) {
+    const c = pt.cv.getContext('2d'), C = CLASSES[pt.cls], on = pt.cls === G.pickCls;
+    c.clearRect(0, 0, 200, 240);
+    const g = c.createRadialGradient(100, 150, 10, 100, 150, 110);
+    g.addColorStop(0, `rgba(${C.glow},${on ? 0.35 : 0.15})`); g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g; c.fillRect(0, 0, 200, 240);
+    // 選中的角色：輪流面向下、右、上、左，偶爾出手；沒選中的站著不動
+    const dir = on ? [0, 3, 1, 2][Math.floor(t / 1.6) % 4] : 0;
+    const acting = on && (t % 3.2) > 2.6;
+    pt.hero.act = acting ? { n: 'shoot', t: (t % 3.2) - 2.6, dur: 0.6 } : null;
+    c.imageSmoothingEnabled = false;
+    drawHero(c, 100, 220, pt.hero, 8, dir);
+  }
 }
 
 // =====================================================
@@ -2193,7 +2429,7 @@ requestAnimationFrame(frame);
 loadAssets();
 if (location.hash.startsWith('#play')) {
   G.testMode = true; G.showFps = true;
-  startGame(newPlayer()).then(() => {
+  startGame(newPlayer(/samurai/.test(location.hash) ? 'samurai' : 'ninja')).then(() => {
     const zm = location.hash.match(/zone-(\w+)/);
     if (zm) travelTo(zm[1]);
     if (location.hash.includes('travel')) { openPanel('travel'); return; }   // 測試：傳送面板

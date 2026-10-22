@@ -45,6 +45,7 @@ const TouchUI = (() => {
       <div id="tActions">
         <button id="tAtk" aria-label="攻擊"><span>攻擊</span></button>
         <button id="tAtkSwap" aria-label="更換攻擊鍵技能">⇄</button>
+        <button id="tPick" class="hidden" aria-label="拾取裝備">拾取</button>
         ${[0, 1, 2, 3].map(i => `<button class="tSk" id="tSk${i}" data-i="${i}"><span class="tIcon"></span><span class="tName"></span><div class="tCd"></div></button>`).join('')}
       </div>`;
     document.body.appendChild(ui);
@@ -82,6 +83,8 @@ const TouchUI = (() => {
     atk.addEventListener('pointerup', atkUp); atk.addEventListener('pointercancel', atkUp);
     // 攻擊鍵要按住連續攻擊，所以不用長按；旁邊的小按鈕用來換技能
     $('tAtkSwap').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); openSkillPick('tL'); });
+    // 拾取鍵：附近有裝備時才出現
+    $('tPick').addEventListener('pointerdown', e => { e.preventDefault(); if (!G.paused) pickupNearest(); });
 
     // ---- 技能鍵 ----
     for (let i = 0; i < 4; i++) {
@@ -107,7 +110,7 @@ const TouchUI = (() => {
     if (!atkHeld && !(G.held && G.held.space)) return;
     const t = aim();
     if (t.e) {
-      if (t.d <= P.st.range - 0.3) {
+      if (inReach(validSkill(P.leftSkill), t.e)) {
         P.face = Math.atan2(t.y - P.y, t.x - P.x);
         useSkill(P.leftSkill, t, true);
       } else if (!joy.on && !keyMoveDir()) P.target = t.e;   // 太遠：自動走過去（正在手動移動時不搶方向）
@@ -117,6 +120,7 @@ const TouchUI = (() => {
   // 每 0.05 秒：更新技能鍵的圖示、冷卻、魔力
   function hud() {
     if (!built) return;
+    $('tPick').classList.toggle('hidden', !nearestItem());
     const L = validSkill(P.leftSkill), atkLabel = L === ATTACK ? '攻擊' : skillInfo(L).name;
     const span = $('tAtk').querySelector('span');
     if (span.textContent !== atkLabel) { span.textContent = atkLabel; span.style.fontSize = atkLabel.length > 2 ? '13px' : ''; }
@@ -124,7 +128,7 @@ const TouchUI = (() => {
       const b = $('tSk' + i), id = slotSkill(i);
       b.classList.toggle('empty', !id);
       if (!id) { b.querySelector('.tIcon').textContent = '＋'; b.querySelector('.tName').textContent = ''; b.querySelector('.tCd').style.height = '0'; continue; }
-      const sk = SKILLS[id], tree = SKILL_TREES.find(t => t.skills.includes(id));
+      const sk = SKILLS[id], tree = ALL_TREES.find(t => t.skills.includes(id));
       const ic = b.querySelector('.tIcon');
       if (ic.textContent !== sk.icon) { ic.textContent = sk.icon; ic.style.color = tree.color; b.querySelector('.tName').textContent = sk.name; }
       const cd = P.cds[id] || 0, mx = P.cdMax[id] || 1;

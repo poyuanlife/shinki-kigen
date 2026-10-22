@@ -43,6 +43,10 @@ const FILES = [
   // 圖塊與傳送陣
   ...['TilesetDesert', 'TilesetDungeon', 'TilesetFloorDetail'].map(n => `Backgrounds/Tilesets/${n}.png`),
   'FX/Magic/Circle/SpriteSheetWhite.png',
+  // ---- 武士（第二個職業） ----
+  ...['Walk', 'Idle', 'Attack', 'Dead'].map(a => `Actor/Character/SamuraiRed/SeparateAnim/${a}.png`),
+  'Actor/Character/SamuraiRed/Faceset.png',
+  ...['Katana', 'Ninjaku', 'BigSword', 'Lance'].map(n => `Items/Weapons/${n}/Sprite.png`),
   // 授權說明
   'LICENSE.txt', 'README.md',
 ];

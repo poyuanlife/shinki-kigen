@@ -37,13 +37,18 @@
     <div class="logoSub">DEUS · MACHINA</div>
     <div class="tagline">和風忍者打寶動作 RPG（青葉之原測試版）</div>
     <div class="cards">
-      <div class="card active">
-        <canvas id="portrait" width="200" height="240"></canvas>
+      <div class="card pick active" data-cls="ninja">
+        <canvas class="portrait" width="200" height="240"></canvas>
         <div class="cardFlag">綠忍</div>
         <div class="cardName">忍者</div>
         <div class="cardDesc">來去無影的暗器高手。以投擲術、體術與忍法，在遠處殲滅妖怪。</div>
       </div>
-      <div class="card locked"><div class="lockIcon">?</div><div class="cardFlag">？？？</div><div class="cardName">尚未開放</div></div>
+      <div class="card pick" data-cls="samurai">
+        <canvas class="portrait" width="200" height="240"></canvas>
+        <div class="cardFlag">赤武者</div>
+        <div class="cardName">武士</div>
+        <div class="cardDesc">一刀斬盡群妖的劍豪。貼身揮刀橫掃成群敵人，身披重甲，天生減傷 10%。</div>
+      </div>
       <div class="card locked"><div class="lockIcon">?</div><div class="cardFlag">？？？</div><div class="cardName">尚未開放</div></div>
       <div class="card locked"><div class="lockIcon">?</div><div class="cardFlag">？？？</div><div class="cardName">尚未開放</div></div>
     </div>
@@ -53,7 +58,7 @@
     </div>
     <div class="help">
       <b>操作</b>　WASD / 方向鍵：移動　｜　空白鍵（按住）：自動攻擊最近的敵人　｜　左鍵：移動 / 攻擊 / 拾取　｜　Shift+左鍵：原地投擲　｜　右鍵：右鍵技能　｜　點快捷列兩側換技能，清單中按 1–8 設定快捷鍵<br>
-      Q：生命藥水　E：魔力藥水　｜　C：角色　I：背包　K：技能樹　T：回營地　Tab：小地圖　N：音樂開關　V：音效開關　Esc：系統選單 / 關閉視窗<br>
+      F：拾取附近的裝備　Q：生命藥水　E：魔力藥水　｜　C：角色　I：背包　K：技能樹　T：回營地　Tab：小地圖　N：音樂開關　V：音效開關　Esc：系統選單 / 關閉視窗<br>
       <span class="dim">美術與音樂：<a href="https://pixel-boy.itch.io/ninja-adventure-asset-pack" target="_blank" rel="noopener" style="color:inherit">Ninja Adventure</a>（Pixel-boy &amp; AAA，CC0）</span><br>
       <span class="dim">F2：診斷報告　F3：顯示 FPS　F4：切換畫質　｜　測試鍵：F9 立即升級　F10 掉落史詩＋傳奇裝備　F8 召喚首領</span>
     </div>
@@ -151,7 +156,7 @@
   <div class="setRow" id="optDir"><button data-d="auto">自動</button><button data-d="side">側面</button><button data-d="front">正面 / 背面</button></div>
   <div class="setRow"><button id="btnFull">全螢幕 開 / 關</button></div>
   <h3>遊戲</h3>
-  <div class="menuBtns"><button id="btnSave" class="big">儲存遊戲</button><button id="btnQuit" class="big">離開遊戲</button></div>
+  <div class="menuBtns"><button id="btnCamp" class="big">回營地</button><button id="btnSave" class="big">儲存遊戲</button><button id="btnQuit" class="big">離開遊戲</button></div>
   <div class="hint" id="saveInfo"></div>
   <div class="hint">選單開著時遊戲會暫停。遊戲每 30 秒自動存檔，離開遊戲時也會自動存檔。<br>快速鍵：Esc 開關選單　N 音樂開關　V 音效開關　F4 畫質</div>
 </div>

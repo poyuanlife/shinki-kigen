@@ -179,7 +179,7 @@ button.big:hover { filter: brightness(1.3); }
 .setRow button { background: #2a2014; color: #e8cf94; border: 1px solid #6b5530; border-radius: 3px; padding: 3px 16px; }
 .setRow button.on { background: #6b5530; color: #fff; border-color: #d9a441; }
 .setRow .dim { color: #888; font-size: 12px; }
-.menuBtns { display: flex; gap: 12px; justify-content: center; margin: 8px 0; }
+.menuBtns { display: flex; gap: 12px; justify-content: center; margin: 8px 0; flex-wrap: wrap; }
 .menuBtns button.big { font-size: 15px; padding: 8px 22px; }
 #paused { position: fixed; top: 6%; left: 50%; transform: translateX(-50%); z-index: 44; color: #f3d48a; font-size: 20px; letter-spacing: 6px; text-shadow: 0 2px 6px #000; pointer-events: none; }
 
@@ -245,6 +245,11 @@ html.touch .panel { left: calc(env(safe-area-inset-left) + 6px) !important; righ
   width: auto !important; max-width: 760px; margin: 0 auto; transform: none; z-index: 30; font-size: 13px; }
 html.touch .panel.menu { width: min(420px, 96vw) !important; left: 50% !important; right: auto !important; transform: translateX(-50%); bottom: auto; max-height: calc(100vh - 12px); z-index: 45; }
 html.touch .close { font-size: 30px; line-height: 24px; padding: 0 6px; }
+/* 手機：商店和背包同時開時左右各半 */
+html.touch.duo #panelShop { right: calc(50% + 3px) !important; }
+html.touch.duo #panelInv { left: calc(50% + 3px) !important; }
+html.touch.duo #invGrid { grid-template-columns: repeat(auto-fill, 40px); }
+html.touch.duo .grid6 { grid-template-columns: repeat(auto-fill, 48px); }
 html.touch #equipGrid { grid-template-columns: repeat(3, 58px); grid-auto-rows: 58px; }
 html.touch #equipGrid .slot { width: 58px; height: 58px; }
 html.touch .hint { display: none; }
@@ -252,6 +257,16 @@ html.touch .hint { display: none; }
 /* 手機的道具 / 技能說明框（點一下出現，可以按按鈕） */
 #tooltip.sheet { pointer-events: auto; left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); max-width: min(360px, 94vw);
   max-height: 88vh; overflow-y: auto; z-index: 200; font-size: 13px; }
+/* 裝備比較：左右並排（手機橫向比較好看） */
+#tooltip.sheet.wide { max-width: min(860px, 97vw); width: max-content; max-height: 94vh; font-size: 12px; padding: 6px 12px 0; line-height: 1.4; }
+#tooltip.sheet.wide .tipName { font-size: 14px; }
+#tooltip.sheet.wide .tipSep { margin: 5px 0; }
+#tooltip.sheet.wide .sheetBtns { position: sticky; bottom: 0; margin: 6px -12px 0; padding: 6px 0 8px; background: rgba(8,6,6,0.98); border-top: 1px solid #3a3020; }
+.cmpRow { display: flex; gap: 0; align-items: stretch; }
+.cmpCol { flex: 1 1 0; min-width: 200px; max-width: 280px; padding: 0 12px; }
+.diff { display: grid; grid-template-columns: repeat(2, auto); column-gap: 10px; justify-content: center; }
+.cmpCol + .cmpCol { border-left: 1px solid #3a3020; }
+.cmpCol:first-child { padding-left: 0; } .cmpCol:last-child { padding-right: 0; }
 .sheetBtns { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
 .sheetBtns button { min-width: 72px; padding: 8px 12px; font-size: 14px; color: #f3d48a; background: linear-gradient(#4a3418, #241708); border: 1px solid #c79a46; border-radius: 4px; }
 
@@ -271,9 +286,9 @@ html.touch .hint { display: none; }
   .logo { font-size: 36px; letter-spacing: 8px; }
   .logoSub { font-size: 11px; }
   .tagline { margin: 6px 0 10px; font-size: 13px; }
-  .card { width: 150px; min-height: 0; }
+  .card { width: 132px; min-height: 0; }
   .card.locked { display: none; }
-  #portrait { width: 130px; height: 156px; }
+  .portrait { width: 110px; height: 132px; }
   .cardDesc { font-size: 11px; }
   .btns { margin: 10px 0 8px; }
   .help { font-size: 11px; line-height: 1.6; }
@@ -313,6 +328,12 @@ html.touch #skillPick { left: 50% !important; top: 50% !important; transform: tr
 .spHint, .spEmpty { color: #888; font-size: 11.5px; margin: 6px 2px 0; }
 html.touch .spItem { padding: 10px; font-size: 15px; }
 #tAtkSwap { right: 66px; bottom: 66px; width: 30px; height: 30px; font-size: 15px; background: #2a2014; border: 2px solid #c79a46; color: #f3d48a; z-index: 2; }
+#tActions #tPick { right: 150px; bottom: 84px; width: 58px; height: 32px; border-radius: 16px; font-size: 13px; font-weight: bold; background: #3a2c10; border: 2px solid #ffd23f; color: #ffe9a0; }
+
+/* 職業卡片：可點選 */
+.card.pick { cursor: pointer; opacity: 0.7; transition: opacity .15s, border-color .15s; }
+.card.pick:hover { opacity: 0.9; }
+.card.pick.active { opacity: 1; }
 
 /* ---------- 首頁 ---------- */
 #home { position: fixed; inset: 0; z-index: 55; cursor: pointer; overflow: hidden; background: #0d0a08; transition: opacity .45s; }

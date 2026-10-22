@@ -32,6 +32,7 @@ const MUSIC = {
 };
 const SFX = {
   throw: 'Sounds/Whoosh & Slash/Whoosh.wav',
+  slash: 'Sounds/Whoosh & Slash/Slash.wav',
   hit: 'Sounds/Hit & Impact/Hit2.wav',
   crit: 'Sounds/Hit & Impact/Impact.wav',
   kill: 'Sounds/Hit & Impact/Impact4.wav',

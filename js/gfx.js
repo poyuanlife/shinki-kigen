@@ -73,6 +73,13 @@ const SPEC = {
     idle: ninjaAnim('Idle', 4, 300), hit: ninjaAnim('Hit', 2, 80, { once: true }),
     dead: ninjaAnim('Dead', 2, 250, { once: true, oneDir: true }),
   } },
+  // 武士：每個動作一張圖（16×16，直欄 = 方向）
+  heroSamurai: { ox: 8, oy: 15, h: 15, anims: {
+    walk: { file: 'Actor/Character/SamuraiRed/SeparateAnim/Walk.png', cw: 16, ch: 16, n: 4, ms: 130 },
+    idle: { file: 'Actor/Character/SamuraiRed/SeparateAnim/Idle.png', cw: 16, ch: 16, n: 1, ms: 1000 },
+    attack: { file: 'Actor/Character/SamuraiRed/SeparateAnim/Attack.png', cw: 16, ch: 16, n: 1, ms: 300, once: true },
+    dead: { file: 'Actor/Character/SamuraiRed/SeparateAnim/Dead.png', cw: 16, ch: 16, n: 1, ms: 300, once: true, oneDir: true },
+  } },
   slime: mon16('Actor/Monster/Slime/Slime.png', 11),
   bat: mon16('Actor/Monster/BlueBat/SpriteSheet.png', 14),
   flam: mon16('Actor/Monster/Flam/SpriteSheet.png', 14),
@@ -106,9 +113,10 @@ function drawSpec(c, specName, act, dir, t, x, y, scale = PX, flash = 0) {
 
 // ---------- 主角 ----------
 const HERO_SCALE = PX;
+const heroSpec = p => (p.spr && SPEC[p.spr] ? p.spr : clsOf(p).spr);
 function heroAnim(p) {
   if (p.dead) return ['dead', p.deadT || 0];
-  if (p.act && !(p.moving > 0.5 && p.act.n === 'shoot')) return ['attack', p.act.t / p.act.dur * animLen('hero', 'attack')];
+  if (p.act && !(p.moving > 0.5 && p.act.n === 'shoot')) return ['attack', p.act.t / p.act.dur * animLen(heroSpec(p), 'attack')];
   if (p.moving > 0.3) return ['walk', p.runT || 0];
   if (p.hurt > 0) return ['hit', 0.12 - p.hurt];
   return ['idle', G.t];
@@ -118,7 +126,8 @@ function drawHero(c, x, y, p, scale = HERO_SCALE, dirOverride) {
   const dir = dirOverride !== undefined ? dirOverride : pickDir(p, screenAngle(p.face));
   if (!p.dead) { c.fillStyle = 'rgba(0,0,0,0.3)'; ell(c, x, y - scale, 6 * scale, 2.5 * scale); c.fill(); }
   if (p.buffs && p.buffs.stim > 0) { c.fillStyle = 'rgba(255,60,60,0.16)'; ell(c, x, y - 8 * scale, 11 * scale, 12 * scale); c.fill(); }
-  drawSpec(c, 'hero', act, dir, t, x, y, scale, p.hurt > 0 ? 0.6 : 0);
+  if (p.buffs && p.buffs.kongou > 0) { c.fillStyle = 'rgba(255,210,90,0.18)'; ell(c, x, y - 8 * scale, 11 * scale, 12 * scale); c.fill(); }
+  drawSpec(c, heroSpec(p), act, dir, t, x, y, scale, p.hurt > 0 ? 0.6 : 0);
   if (p.shield > 0) {
     c.save(); c.globalAlpha = 0.25 + Math.sin(performance.now() / 150) * 0.08;
     c.strokeStyle = '#8fe8a0'; c.lineWidth = 1.5; ell(c, x, y - 8 * scale, 11 * scale, 12 * scale); c.stroke();
@@ -150,6 +159,11 @@ function drawEnemySprite(c, x, y, e) {
   // 會飛的怪物（蝙蝠、鬼火）上下飄
   const fly = e.def.fly ? Math.sin(G.t * 4 + e.anim) * 3 - 6 : 0;
   drawSpec(c, e.def.spr, act, pickDir(e, screenAngle(e.face)), t, x, y + fly, sc, e.hitFlash > 0 ? 0.8 : 0);
+  if (e.stun > 0) {   // 暈眩：頭上轉圈的星星
+    const hy = y + fly - enemyH(e) - 4;
+    c.fillStyle = '#ffe14a';
+    for (let i = 0; i < 3; i++) { const a = G.t * 6 + i * 2.09; star(c, x + Math.cos(a) * 9, hy + Math.sin(a) * 3, 3); c.fill(); }
+  }
 }
 
 // 屍體：閃白後淡出，搭配煙霧特效
@@ -198,6 +212,13 @@ function drawProjectile(c, b, kind) {
       const f = Math.floor(G.t * 12) % 4;
       c.translate(s.x, s.y - z); c.rotate(ang);
       c.drawImage(im, f * 16, 0, 16, 16, -10, -10, 20, 20);
+    }
+  } else if (kind === 'blade') {   // 鎌鼬：新月形的真空刃
+    c.translate(s.x, s.y - z); c.rotate(ang); c.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 2; i++) {
+      const k = i ? 1 : 1.4;
+      c.globalAlpha = i ? 0.95 : 0.4; c.fillStyle = i ? '#e8fbff' : (b.color || '#8ef');
+      c.beginPath(); c.arc(-4 * k, 0, 13 * k, -1.2, 1.2); c.arc(-9 * k, 0, 11 * k, 1.05, -1.05, true); c.closePath(); c.fill();
     }
   } else if (kind === 'kunai') {
     const im = img('FX/Projectile/Kunai.png');

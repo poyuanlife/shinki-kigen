@@ -88,6 +88,10 @@ const WEAPON_ICONS = {
   shotgun: { file: 'Items/Projectile/Caltrop.png' },
   gatling: { file: 'Items/Projectile/Dynamite.png' },
   rail: { file: 'FX/Projectile/BigShuriken.png', crop: true },
+  katana: { file: 'Items/Weapons/Katana/Sprite.png' },
+  tanto: { file: 'Items/Weapons/Ninjaku/Sprite.png' },
+  odachi: { file: 'Items/Weapons/BigSword/Sprite.png' },
+  naginata: { file: 'Items/Weapons/Lance/Sprite.png' },
 };
 const _iconCache = {};
 function itemIcon(it) {

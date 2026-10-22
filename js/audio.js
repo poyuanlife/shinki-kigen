@@ -9,11 +9,11 @@
 const Snd = (() => {
   const BASE = 'assets/na/audio/';
   const SFX_NAMES = ['throw', 'hit', 'crit', 'kill', 'hurt', 'coin', 'pickup', 'heal', 'boom', 'thunder', 'fireball',
-    'magic', 'shrine', 'tele', 'ui', 'cancel', 'alert', 'levelup', 'gameover', 'victory'];
+    'magic', 'slash', 'shrine', 'tele', 'ui', 'cancel', 'alert', 'levelup', 'gameover', 'victory'];
   // 每個音效的音量、最短間隔（秒，避免連發時太吵）
   const SFX_CFG = {
     throw: [0.35, 0.06], hit: [0.4, 0.05], crit: [0.55, 0.08], kill: [0.5, 0.06], hurt: [0.6, 0.2], coin: [0.5, 0.05],
-    pickup: [0.6, 0.1], heal: [0.6, 0.2], boom: [0.7, 0.1], thunder: [0.8, 0.2], fireball: [0.3, 0.15], magic: [0.5, 0.15],
+    pickup: [0.6, 0.1], heal: [0.6, 0.2], boom: [0.7, 0.1], thunder: [0.8, 0.2], fireball: [0.3, 0.15], magic: [0.5, 0.15], slash: [0.4, 0.06],
     shrine: [0.7, 0.5], tele: [0.6, 0.3], ui: [0.4, 0.05], cancel: [0.4, 0.1], alert: [0.8, 1], levelup: [0.8, 0.5],
     gameover: [0.8, 1], victory: [0.8, 1],
   };

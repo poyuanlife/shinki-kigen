@@ -35,14 +35,21 @@ const SLOT_NAMES = { weapon: '武器', helm: '頭盔', armor: '胸甲', gloves: 
 const EQUIP_SLOTS = ['amulet', 'helm', 'ring1', 'weapon', 'armor', 'gloves', 'ring2', 'belt', 'boots'];
 const slotType = s => (s.startsWith('ring') ? 'ring' : s);
 
-// key 沿用舊名（存檔相容）；shot = 投擲物外觀
+// key 沿用舊名（存檔相容）；cls = 哪個職業能用；melee = 近戰（range 是揮砍距離）
 const WEAPON_TYPES = [
-  { key: 'rifle', names: ['鐵手裏劍', '鋼手裏劍', '風魔手裏劍', '天狗手裏劍'], mult: 1.0, spd: 1.0, range: 7.5 },
-  { key: 'smg', names: ['練習苦無', '鍛鐵苦無', '疾風苦無', '影縫苦無'], mult: 0.72, spd: 1.4, range: 6.5 },
-  { key: 'shotgun', names: ['撒菱', '鐵撒菱', '毒撒菱', '修羅撒菱'], mult: 1.5, spd: 0.72, range: 5.5 },
-  { key: 'gatling', names: ['連射筒', '袖箭筒', '千本筒', '雷神筒'], mult: 0.56, spd: 1.85, range: 7 },
-  { key: 'rail', names: ['大型手裏劍', '車輪手裏劍', '鬼神手裏劍', '天叢雲手裏劍'], mult: 2.1, spd: 0.55, range: 10 },
+  { key: 'rifle', cls: 'ninja', names: ['鐵手裏劍', '鋼手裏劍', '風魔手裏劍', '天狗手裏劍'], mult: 1.0, spd: 1.0, range: 7.5 },
+  { key: 'smg', cls: 'ninja', names: ['練習苦無', '鍛鐵苦無', '疾風苦無', '影縫苦無'], mult: 0.72, spd: 1.4, range: 6.5 },
+  { key: 'shotgun', cls: 'ninja', names: ['撒菱', '鐵撒菱', '毒撒菱', '修羅撒菱'], mult: 1.5, spd: 0.72, range: 5.5 },
+  { key: 'gatling', cls: 'ninja', names: ['連射筒', '袖箭筒', '千本筒', '雷神筒'], mult: 0.56, spd: 1.85, range: 7 },
+  { key: 'rail', cls: 'ninja', names: ['大型手裏劍', '車輪手裏劍', '鬼神手裏劍', '天叢雲手裏劍'], mult: 2.1, spd: 0.55, range: 10 },
+  // 武士的刀劍
+  { key: 'katana', cls: 'samurai', melee: true, names: ['木刀', '打刀', '名刀', '妖刀'], mult: 1.2, spd: 1.0, range: 1.7 },
+  { key: 'tanto', cls: 'samurai', melee: true, names: ['短刀', '脇差', '小太刀', '鬼丸'], mult: 0.85, spd: 1.4, range: 1.45 },
+  { key: 'odachi', cls: 'samurai', melee: true, names: ['野太刀', '大太刀', '斬馬刀', '鬼斬大太刀'], mult: 1.85, spd: 0.68, range: 2.0 },
+  { key: 'naginata', cls: 'samurai', melee: true, names: ['竹槍', '長槍', '薙刀', '十文字槍'], mult: 1.35, spd: 0.85, range: 2.4 },
 ];
+const WTYPE = Object.fromEntries(WEAPON_TYPES.map(w => [w.key, w]));
+const weaponCls = it => (it && it.slot === 'weapon' && WTYPE[it.wkey] ? WTYPE[it.wkey].cls : null);
 const ARMOR_TYPES = {
   helm: { names: ['布頭巾', '鉢金', '鐵兜', '鬼面兜'], f: 0.6 },
   armor: { names: ['忍裝束', '鎖帷子', '胴丸', '大鎧'], f: 1.0 },
@@ -131,6 +138,66 @@ const SKILLS = {
 };
 const HOTBAR = ['burst', 'scatter', 'gatling', 'grenade', 'turret', 'orbital', 'stim', 'shield'];
 const SKILL_MAX = 20;
+
+// ---------- 武士技能 ----------
+// atk：受攻擊速度限制（跟普通攻擊共用間隔）；reach：施放距離（沒有就用武器距離）
+const SAMURAI_TREES = [
+  { name: '劍術', color: '#ff6b5b', skills: ['iai', 'kenshin', 'tsubame', 'senjin'] },
+  { name: '武道', color: '#4fb3ff', skills: ['goutai', 'kiai', 'kongou', 'bushido'] },
+  { name: '奧義', color: '#f5c542', skills: ['shippu', 'kamaitachi', 'shingan', 'raijin'] },
+];
+Object.assign(SKILLS, {
+  iai: { name: '居合斬', type: 'active', req: 1, pre: null, icon: '⚔', atk: true,
+    mana: l => 2 + l * 0.4, cd: () => 0,
+    desc: l => `拔刀一閃，砍向前方大範圍的敵人，造成 ${130 + l * 14}% 武器傷害。` },
+  kenshin: { name: '刀意', type: 'passive', req: 6, pre: 'iai', icon: '⚚',
+    desc: l => `近戰斬擊傷害 +${l * 6}%，攻擊速度 +${(l * 1.5).toFixed(1)}%。` },
+  tsubame: { name: '燕返', type: 'active', req: 12, pre: 'iai', icon: '↻', atk: true,
+    mana: l => 6 + l * 0.6, cd: () => 0,
+    desc: l => `迴身斬擊，砍中身邊一圈所有敵人，造成 ${110 + l * 12}% 武器傷害。` },
+  senjin: { name: '千刃旋風', type: 'active', req: 24, pre: 'tsubame', icon: '✺',
+    mana: l => 18 + l, cd: () => 8,
+    desc: l => `${(2.5 + l * 0.1).toFixed(1)} 秒內化為刀刃旋風，每 0.2 秒斬擊周圍敵人，每次 ${50 + l * 6}% 武器傷害。旋風中可移動。` },
+
+  goutai: { name: '剛體', type: 'passive', req: 1, pre: null, icon: '⛨',
+    desc: l => `防禦 +${l * 15}%，生命上限 +${l * 5}%。` },
+  kiai: { name: '氣合', type: 'active', req: 6, pre: 'goutai', icon: '喝',
+    mana: l => 8 + l * 0.5, cd: () => 12,
+    desc: l => `大喝一聲，周圍敵人暈眩 ${(1 + l * 0.1).toFixed(1)} 秒；8 秒內傷害 +${20 + l * 2}%。` },
+  kongou: { name: '金剛身', type: 'active', req: 12, pre: 'goutai', icon: '◈',
+    mana: l => 10 + l, cd: () => 16,
+    desc: l => `${(6 + l * 0.3).toFixed(1)} 秒內受到的傷害再減少 ${Math.min(45, 25 + l)}%。` },
+  bushido: { name: '武士道', type: 'passive', req: 18, pre: 'kiai', icon: '武',
+    desc: l => `所有傷害 +${l * 6}%，生命竊取 +${(l * 0.5).toFixed(1)}%。` },
+
+  shippu: { name: '疾風斬', type: 'active', req: 1, pre: null, icon: '➤', reach: 5,
+    mana: l => 4 + l * 0.5, cd: () => 1.2,
+    desc: l => `向前衝刺最多 5 格，砍中路上所有敵人，造成 ${150 + l * 18}% 武器傷害。` },
+  kamaitachi: { name: '鎌鼬', type: 'active', req: 6, pre: 'shippu', icon: '☾', atk: true, reach: 7,
+    mana: l => 5 + l * 0.5, cd: () => 0,
+    desc: l => `揮出貫穿敵人的真空刃，飛行 8 格，造成 ${100 + l * 13}% 武器傷害。` },
+  shingan: { name: '心眼', type: 'passive', req: 12, pre: null, icon: '◎',
+    desc: l => `暴擊率 +${l}%，暴擊傷害 +${l * 8}%。` },
+  raijin: { name: '雷神一閃', type: 'active', req: 24, pre: 'kamaitachi', icon: '☇', reach: 8,
+    mana: l => 30 + l * 1.5, cd: () => 7,
+    desc: l => `化為雷光瞬移到目標處（最遠 8 格），落雷轟擊周圍，造成 ${450 + l * 55}% 武器傷害。` },
+});
+SKILLS.burst.atk = SKILLS.scatter.atk = true;
+
+// ---------- 職業 ----------
+// spr：角色圖（gfx.js 的 SPEC）；stats：初始屬性；dr：天生的傷害減免 %
+const CLASSES = {
+  ninja: { name: '忍者', flag: '綠忍', sub: '青葉之里的影 · 綠忍', spr: 'hero', glow: '120,200,90',
+    desc: '來去無影的暗器高手。以投擲術、體術與忍法，在遠處殲滅妖怪。',
+    trees: SKILL_TREES, hotbar: HOTBAR, first: 'burst', weapon: 'rifle', stats: { str: 20, dex: 15, vit: 20, ene: 10 }, dr: 0 },
+  samurai: { name: '武士', flag: '赤武者', sub: '流浪的劍客 · 赤武者', spr: 'heroSamurai', glow: '230,90,70',
+    desc: '一刀斬盡群妖的劍豪。貼身揮刀橫掃成群敵人，身披重甲，天生減傷 10%。',
+    trees: SAMURAI_TREES, hotbar: ['iai', 'tsubame', 'senjin', 'shippu', 'kamaitachi', 'raijin', 'kiai', 'kongou'],
+    first: 'iai', weapon: 'katana', stats: { str: 25, dex: 15, vit: 25, ene: 5 }, dr: 10 },
+};
+const CLASS_IDS = Object.keys(CLASSES);
+const ALL_TREES = CLASS_IDS.flatMap(c => CLASSES[c].trees);
+const clsOf = p => CLASSES[(p && p.cls) || 'ninja'] || CLASSES.ninja;
 function shieldAmount(l, st) { return Math.round(40 + l * 30 + (st ? st.maxMp * 1.5 : 0)); }
 
 // ---------- 怪物 ----------
@@ -153,14 +220,16 @@ function weightedSlot() {
 }
 function tierOf(ilvl) { return ilvl < 18 ? 0 : ilvl < 40 ? 1 : ilvl < 70 ? 2 : 3; }
 
-function genItem(ilvl, rarity, slot, wkey) {
+// cls：掉武器時只從這個職業的武器挑（不給就全部隨機）
+function genItem(ilvl, rarity, slot, wkey, cls) {
   ilvl = clamp(Math.round(ilvl), 1, 99);
   slot = slot || weightedSlot();
   const R = RARITIES[rarity];
   const tier = tierOf(ilvl);
   const it = { id: uid(), slot, rarity, ilvl, req: Math.max(1, ilvl - 3), affixes: [] };
   if (slot === 'weapon') {
-    const wt = WEAPON_TYPES.find(w => w.key === wkey) || choice(WEAPON_TYPES);
+    const pool = cls ? WEAPON_TYPES.filter(w => w.cls === cls) : WEAPON_TYPES;
+    const wt = WTYPE[wkey] || choice(pool.length ? pool : WEAPON_TYPES);
     it.wkey = wt.key;
     it.base = wt.names[tier];
     const avg = (6 + ilvl * 2.4) * wt.mult * R.mult;

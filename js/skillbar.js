@@ -15,19 +15,20 @@ function setHotkeyMode(m) { HOTKEY_MODE = m; try { localStorage.setItem('dm_hotk
 // 技能的名稱、圖示、顏色
 function skillInfo(id) {
   if (id === ATTACK || !SKILLS[id]) return { name: '普通攻擊', icon: '✦', color: '#e8cf94' };
-  const sk = SKILLS[id], tree = SKILL_TREES.find(t => t.skills.includes(id));
+  const sk = SKILLS[id], tree = ALL_TREES.find(t => t.skills.includes(id));
   return { name: sk.name, icon: sk.icon, color: tree ? tree.color : '#ccc' };
 }
 // 已學會的主動技能（依技能樹順序）
-const learnedActive = () => SKILL_TREES.flatMap(t => t.skills).filter(id => SKILLS[id].type === 'active' && (P.skills[id] || 0) > 0);
+const learnedActive = () => clsOf(P).trees.flatMap(t => t.skills).filter(id => SKILLS[id].type === 'active' && (P.skills[id] || 0) > 0);
 // 沒學會的技能不能用：回到普通攻擊
 const validSkill = id => (id === ATTACK || ((P.skills[id] || 0) > 0 && SKILLS[id] && SKILLS[id].type === 'active') ? id : ATTACK);
 
 // 存檔沒有這些欄位時補上預設值
 function ensureSkillSlots(p) {
+  const C = clsOf(p);
   if (!p.leftSkill) p.leftSkill = ATTACK;
-  if (!p.rightSkill) p.rightSkill = 'burst';
-  if (!Array.isArray(p.hotkeys) || p.hotkeys.length !== 8) p.hotkeys = HOTBAR.map(id => ({ id, hand: 'R' }));
+  if (!p.rightSkill) p.rightSkill = C.first;
+  if (!Array.isArray(p.hotkeys) || p.hotkeys.length !== 8) p.hotkeys = C.hotbar.map(id => ({ id, hand: 'R' }));
   if (!Array.isArray(p.touchSkills) || p.touchSkills.length !== 4) p.touchSkills = [null, null, null, null];
 }
 
