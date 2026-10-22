@@ -47,6 +47,11 @@ const WEAPON_TYPES = [
   { key: 'tanto', cls: 'samurai', melee: true, names: ['短刀', '脇差', '小太刀', '鬼丸'], mult: 0.85, spd: 1.4, range: 1.45 },
   { key: 'odachi', cls: 'samurai', melee: true, names: ['野太刀', '大太刀', '斬馬刀', '鬼斬大太刀'], mult: 1.85, spd: 0.68, range: 2.0 },
   { key: 'naginata', cls: 'samurai', melee: true, names: ['竹槍', '長槍', '薙刀', '十文字槍'], mult: 1.35, spd: 0.85, range: 2.4 },
+  // 陰陽師的法器（普通攻擊都是會追蹤敵人的符咒）
+  { key: 'ofuda', cls: 'onmyoji', names: ['白符', '靈符', '破魔札', '天之御札'], mult: 0.9, spd: 1.2, range: 7 },
+  { key: 'gohei', cls: 'onmyoji', names: ['紙垂', '御幣', '神樂御幣', '天照御幣'], mult: 1.0, spd: 1.0, range: 8 },
+  { key: 'shakujo', cls: 'onmyoji', names: ['木杖', '錫杖', '金剛錫杖', '九環錫杖'], mult: 1.5, spd: 0.72, range: 7.5 },
+  { key: 'jusho', cls: 'onmyoji', names: ['抄本', '咒書', '陰陽寮秘書', '晴明之書'], mult: 1.2, spd: 0.88, range: 8.5 },
 ];
 const WTYPE = Object.fromEntries(WEAPON_TYPES.map(w => [w.key, w]));
 const weaponCls = it => (it && it.slot === 'weapon' && WTYPE[it.wkey] ? WTYPE[it.wkey].cls : null);
@@ -184,6 +189,49 @@ Object.assign(SKILLS, {
 });
 SKILLS.burst.atk = SKILLS.scatter.atk = true;
 
+// ---------- 陰陽師技能 ----------
+const ONMYOJI_TREES = [
+  { name: '符術', color: '#ff6a8a', skills: ['hama', 'fuuryoku', 'gobou', 'hyakki'] },
+  { name: '式神', color: '#5fd3ff', skills: ['orizuru', 'shikiryoku', 'kitsunebi', 'zenki'] },
+  { name: '陰陽道', color: '#c9a6ff', skills: ['goshin', 'hangon', 'tengan', 'taikyoku'] },
+];
+Object.assign(SKILLS, {
+  hama: { name: '破魔符', type: 'active', req: 1, pre: null, icon: '札', atk: true,
+    mana: l => 3 + l * 0.4, cd: () => 0,
+    desc: l => `扇形射出 ${3 + Math.floor(l / 6)} 張會追蹤敵人的符咒，每張 ${90 + l * 10}% 武器傷害。` },
+  fuuryoku: { name: '符力', type: 'passive', req: 6, pre: 'hama', icon: '符',
+    desc: l => `符咒與式神的飛行道具傷害 +${l * 6}%。` },
+  gobou: { name: '五芒星', type: 'active', req: 12, pre: 'hama', icon: '☆', reach: 9,
+    mana: l => 8 + l * 0.7, cd: () => 0.8,
+    desc: l => `在目標處畫出五芒星，0.6 秒後爆發，造成 ${220 + l * 25}% 武器傷害，並讓敵人暈眩 0.6 秒。` },
+  hyakki: { name: '百鬼封印', type: 'active', req: 24, pre: 'gobou', icon: '封', reach: 9,
+    mana: l => 24 + l * 1.2, cd: () => 10,
+    desc: l => `展開 4 秒的封印陣：陣內敵人移動變慢，每 0.5 秒受到 ${60 + l * 7}% 武器傷害。` },
+
+  orizuru: { name: '紙鶴', type: 'active', req: 1, pre: null, icon: '鶴',
+    mana: l => 10 + l * 0.8, cd: () => 1.5,
+    desc: l => `放出繞著你飛的紙鶴式神 18 秒，自動射出符咒，每發 ${40 + l * 6}% 武器傷害，最多同時 ${1 + Math.floor(l / 5)} 隻。` },
+  shikiryoku: { name: '式神強化', type: 'passive', req: 6, pre: 'orizuru', icon: '式',
+    desc: l => `所有式神（紙鶴、狐火、前鬼）傷害 +${l * 8}%，紙鶴與前鬼多停留 ${l} 秒。` },
+  kitsunebi: { name: '狐火', type: 'active', req: 12, pre: 'orizuru', icon: '狐',
+    mana: l => 15 + l, cd: () => 6,
+    desc: l => `召喚 3 團繞身旋轉的狐火 8 秒，碰到的敵人受到 ${70 + l * 8}% 武器傷害。` },
+  zenki: { name: '召喚·前鬼', type: 'active', req: 24, pre: 'kitsunebi', icon: '鬼',
+    mana: l => 40 + l * 1.5, cd: () => 30,
+    desc: l => `召喚鬼神前鬼助戰 20 秒，揮棒橫掃周圍敵人，每次 ${180 + l * 20}% 武器傷害。` },
+
+  goshin: { name: '護身法', type: 'passive', req: 1, pre: null, icon: '護',
+    desc: l => `魔力上限 +${l * 5}%，魔力回復 +${(l * 0.4).toFixed(1)}/秒。` },
+  hangon: { name: '反魂術', type: 'active', req: 6, pre: 'goshin', icon: '癒',
+    mana: l => 20 + l, cd: () => 20,
+    desc: l => `立刻回復 ${30 + l * 2}% 生命。` },
+  tengan: { name: '天眼', type: 'passive', req: 12, pre: null, icon: '◎',
+    desc: l => `暴擊率 +${l}%，暴擊傷害 +${l * 8}%。` },
+  taikyoku: { name: '太極', type: 'active', req: 18, pre: 'hangon', icon: '☯',
+    mana: l => 15 + l, cd: () => 15,
+    desc: l => `${(6 + l * 0.3).toFixed(1)} 秒內，受到的傷害有 ${Math.min(90, 40 + l * 2)}% 改由魔力承受。` },
+});
+
 // ---------- 職業 ----------
 // spr：角色圖（gfx.js 的 SPEC）；stats：初始屬性；dr：天生的傷害減免 %
 const CLASSES = {
@@ -194,6 +242,10 @@ const CLASSES = {
     desc: '一刀斬盡群妖的劍豪。貼身揮刀橫掃成群敵人，身披重甲，天生減傷 10%。',
     trees: SAMURAI_TREES, hotbar: ['iai', 'tsubame', 'senjin', 'shippu', 'kamaitachi', 'raijin', 'kiai', 'kongou'],
     first: 'iai', weapon: 'katana', stats: { str: 25, dex: 15, vit: 25, ene: 5 }, dr: 10 },
+  onmyoji: { name: '陰陽師', flag: '式神使', sub: '京之陰陽寮 · 式神使', spr: 'heroOnmyoji', glow: '190,120,255',
+    desc: '驅使符咒與式神的術士。符咒會自動追蹤妖怪，紙鶴、狐火、前鬼替你作戰。傷害靠精神提升。',
+    trees: ONMYOJI_TREES, hotbar: ['hama', 'gobou', 'hyakki', 'orizuru', 'kitsunebi', 'zenki', 'hangon', 'taikyoku'],
+    first: 'hama', weapon: 'ofuda', stats: { str: 10, dex: 15, vit: 18, ene: 30 }, dr: 0, dmgStat: 'ene' },
 };
 const CLASS_IDS = Object.keys(CLASSES);
 const ALL_TREES = CLASS_IDS.flatMap(c => CLASSES[c].trees);

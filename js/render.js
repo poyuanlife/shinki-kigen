@@ -92,6 +92,10 @@ const WEAPON_ICONS = {
   tanto: { file: 'Items/Weapons/Ninjaku/Sprite.png' },
   odachi: { file: 'Items/Weapons/BigSword/Sprite.png' },
   naginata: { file: 'Items/Weapons/Lance/Sprite.png' },
+  ofuda: { file: 'Items/Scroll/Scroll.png' },
+  gohei: { file: 'Items/Weapons/MagicWand/Sprite.png' },
+  shakujo: { file: 'Items/Weapons/Stick/Sprite.png' },
+  jusho: { file: 'Items/Weapons/Book/Sprite.png' },
 };
 const _iconCache = {};
 function itemIcon(it) {

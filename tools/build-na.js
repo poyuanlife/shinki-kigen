@@ -47,6 +47,10 @@ const FILES = [
   ...['Walk', 'Idle', 'Attack', 'Dead'].map(a => `Actor/Character/SamuraiRed/SeparateAnim/${a}.png`),
   'Actor/Character/SamuraiRed/Faceset.png',
   ...['Katana', 'Ninjaku', 'BigSword', 'Lance'].map(n => `Items/Weapons/${n}/Sprite.png`),
+  // ---- 陰陽師（第三個職業） ----
+  ...['Walk', 'Idle', 'Attack', 'Dead'].map(a => `Actor/Character/SorcererBlack/SeparateAnim/${a}.png`),
+  ...['MagicWand', 'Stick', 'Book'].map(n => `Items/Weapons/${n}/Sprite.png`), 'Items/Scroll/Scroll.png',
+  'FX/Magic/Spirit/SpriteSheetBlue.png',
   // 授權說明
   'LICENSE.txt', 'README.md',
 ];

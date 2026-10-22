@@ -61,6 +61,15 @@ const char16 = (name, ox = 8, oy = 15) => {
     attack: { file, cw: 16, ch: 16, n: 1, ms: 300, row: 4 },
   } };
 };
+const sep16 = name => {
+  const f = a => `Actor/Character/${name}/SeparateAnim/${a}.png`;
+  return { ox: 8, oy: 15, h: 15, anims: {
+    walk: { file: f('Walk'), cw: 16, ch: 16, n: 4, ms: 130 },
+    idle: { file: f('Idle'), cw: 16, ch: 16, n: 1, ms: 1000 },
+    attack: { file: f('Attack'), cw: 16, ch: 16, n: 1, ms: 300, once: true },
+    dead: { file: f('Dead'), cw: 16, ch: 16, n: 1, ms: 300, once: true, oneDir: true },
+  } };
+};
 const mon16 = (file, h = 14) => ({ ox: 8, oy: 15, h, anims: {
   walk: { file, cw: 16, ch: 16, n: 4, ms: 140 },
   idle: { file, cw: 16, ch: 16, n: 4, ms: 260 },
@@ -73,13 +82,9 @@ const SPEC = {
     idle: ninjaAnim('Idle', 4, 300), hit: ninjaAnim('Hit', 2, 80, { once: true }),
     dead: ninjaAnim('Dead', 2, 250, { once: true, oneDir: true }),
   } },
-  // 武士：每個動作一張圖（16×16，直欄 = 方向）
-  heroSamurai: { ox: 8, oy: 15, h: 15, anims: {
-    walk: { file: 'Actor/Character/SamuraiRed/SeparateAnim/Walk.png', cw: 16, ch: 16, n: 4, ms: 130 },
-    idle: { file: 'Actor/Character/SamuraiRed/SeparateAnim/Idle.png', cw: 16, ch: 16, n: 1, ms: 1000 },
-    attack: { file: 'Actor/Character/SamuraiRed/SeparateAnim/Attack.png', cw: 16, ch: 16, n: 1, ms: 300, once: true },
-    dead: { file: 'Actor/Character/SamuraiRed/SeparateAnim/Dead.png', cw: 16, ch: 16, n: 1, ms: 300, once: true, oneDir: true },
-  } },
+  // 武士、陰陽師：每個動作一張圖（16×16，直欄 = 方向）
+  heroSamurai: sep16('SamuraiRed'),
+  heroOnmyoji: sep16('SorcererBlack'),
   slime: mon16('Actor/Monster/Slime/Slime.png', 11),
   bat: mon16('Actor/Monster/BlueBat/SpriteSheet.png', 14),
   flam: mon16('Actor/Monster/Flam/SpriteSheet.png', 14),
@@ -220,10 +225,41 @@ function drawProjectile(c, b, kind) {
       c.globalAlpha = i ? 0.95 : 0.4; c.fillStyle = i ? '#e8fbff' : (b.color || '#8ef');
       c.beginPath(); c.arc(-4 * k, 0, 13 * k, -1.2, 1.2); c.arc(-9 * k, 0, 11 * k, 1.05, -1.05, true); c.closePath(); c.fill();
     }
+  } else if (kind === 'fuda') {   // 符咒：白紙 + 紅字，飛行時微微擺動
+    c.translate(snap(s.x), snap(s.y - z)); c.rotate(ang + Math.sin(G.t * 18 + b.x) * 0.25);
+    c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.45; c.fillStyle = b.color || '#f8a'; ell(c, 0, 0, 9, 6); c.fill();
+    c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+    c.fillStyle = '#f5ecd2'; c.fillRect(-7, -3, 14, 6);
+    c.fillStyle = '#c8202c'; c.fillRect(-5, -1, 10, 2); c.fillRect(-1, -3, 2, 6);
   } else if (kind === 'kunai') {
     const im = img('FX/Projectile/Kunai.png');
     if (ready(im)) { c.translate(s.x, s.y - z); c.rotate(ang); c.drawImage(im, -9, -3, 18, 6.5); }
   }
+  c.restore();
+}
+
+// ---------- 陰陽師的式神 ----------
+// 紙鶴：(x, y) = 地面位置，飛在半空中、翅膀拍動
+function drawCrane(c, x, y, t, face) {
+  const z = 30 + Math.sin(t * 3) * 3, flap = Math.sin(t * 14) * 5, dir = Math.cos(face) >= 0 ? 1 : -1;
+  c.fillStyle = 'rgba(0,0,0,0.25)'; ell(c, x, y - 1, 6, 2.5); c.fill();
+  c.save(); c.translate(snap(x), snap(y - z)); c.scale(dir * 1.4, 1.4);
+  c.fillStyle = '#f2f0ea'; c.strokeStyle = '#9a96a8'; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(-8, 1); c.lineTo(8, -1); c.lineTo(11, -5); c.lineTo(6, 2); c.lineTo(-6, 3); c.closePath(); c.fill(); c.stroke();   // 身體與頭
+  c.fillStyle = '#e4e0f4';
+  c.beginPath(); c.moveTo(-2, 0); c.lineTo(2, 0); c.lineTo(-3, -8 - flap); c.closePath(); c.fill(); c.stroke();   // 翅膀
+  c.fillStyle = '#d23040'; c.fillRect(9, -6, 2, 2);
+  c.restore();
+}
+// 狐火：藍白色的靈魂火（素材動畫 + 光暈）
+function drawFoxfire(c, x, y, t) {
+  const z = 18 + Math.sin(t * 5) * 3;
+  c.save(); c.globalCompositeOperation = 'lighter';
+  const g = c.createRadialGradient(x, y - z, 0, x, y - z, 16);
+  g.addColorStop(0, 'rgba(200,240,255,0.8)'); g.addColorStop(1, 'rgba(60,140,255,0)');
+  c.fillStyle = g; c.fillRect(x - 16, y - z - 16, 32, 32);
+  const im = img('FX/Magic/Spirit/SpriteSheetBlue.png');
+  if (ready(im)) { const f = Math.floor(t * 12) % 5; c.drawImage(im, f * 32, 0, 32, 32, snap(x - 16), snap(y - z - 18), 32, 32); }
   c.restore();
 }
 
@@ -369,7 +405,7 @@ function allFiles() {
   for (const sp of Object.values(SPEC)) for (const a of Object.values(sp.anims)) s.add(a.file);
   for (const f of Object.values(FX)) s.add(f.file);
   [T_FLOOR, T_WATER, T_NATURE, T_CAMP, 'FX/Projectile/Shuriken.png', 'FX/Projectile/Fireball.png', 'FX/Projectile/Kunai.png', 'FX/Projectile/EnergyBall.png',
-    'Items/Potion/LifePot.png', 'Items/Potion/WaterPot.png', 'Items/Treasure/GoldCoin.png'].forEach(f => s.add(f));
+    'Items/Potion/LifePot.png', 'Items/Potion/WaterPot.png', 'Items/Treasure/GoldCoin.png', 'FX/Magic/Spirit/SpriteSheetBlue.png'].forEach(f => s.add(f));
   for (const w of Object.values(WEAPON_ICONS)) s.add(w.file);
   [T_DESERT, T_DUNGEON, T_DETAIL, 'FX/Magic/Circle/SpriteSheetWhite.png'].forEach(f => s.add(f));
   return [...s];
