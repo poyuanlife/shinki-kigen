@@ -210,38 +210,66 @@ function drawObj(c, sheet, col, row, w, h, x, y, scale = PX) {
 // 自動接合：依上(1)、右(2)、下(4)、左(8) 鄰格是否同類，選出對應的邊角圖塊
 // 素材排列：3×3 圓角區塊 + 直條 + 橫條 + 單格（相對於起點的欄、列）
 const AUTO = { 0: [3, 3], 1: [3, 2], 4: [3, 0], 5: [3, 1], 2: [0, 3], 8: [2, 3], 10: [1, 3], 6: [0, 0], 12: [2, 0], 3: [0, 2], 9: [2, 2], 14: [1, 0], 11: [1, 2], 7: [0, 1], 13: [2, 1], 15: [1, 1] };
-const AUTO_SETS = {
-  dirt: { sheet: T_FLOOR, col: 0, row: 7, fill: [[1, 8], [1, 8], [1, 8], [0, 11], [1, 11]] },
-  water: { sheet: T_WATER, col: 0, row: 6, single: [1, 1] },
+const T_DESERT = 'Backgrounds/Tilesets/TilesetDesert.png';
+const T_DUNGEON = 'Backgrounds/Tilesets/TilesetDungeon.png';
+const T_DETAIL = 'Backgrounds/Tilesets/TilesetFloorDetail.png';
+
+// 目前區域的美術設定（換地圖時由 applyZoneArt 換掉，見 zones.js）
+// grass：地面 [欄, 列]（重複越多次出現機率越高）；dirt / water：自動接合組的起點；
+// walls：擋路格子畫的東西 [圖, 欄, 列, 寬, 高]；obst / rocks：散落的障礙物；plants / stones：地面小裝飾
+const ART = {
+  grass: [[0, 12], [0, 12], [0, 12], [0, 12], [0, 12], [0, 12], [1, 12], [2, 12], [3, 12], [4, 12]],
+  dirt: { sheet: T_FLOOR, col: 0, row: 7, fill: [[0, 11], [1, 11]] },
+  water: { sheet: T_WATER, col: 0, row: 6 },
+  walls: [[T_NATURE, 0, 0, 2, 2], [T_NATURE, 0, 0, 2, 2], [T_NATURE, 16, 0, 2, 2], [T_NATURE, 18, 0, 2, 2], [T_NATURE, 2, 0, 2, 2], [T_NATURE, 6, 0, 2, 2], [T_NATURE, 14, 0, 2, 2]],
+  obst: [[T_NATURE, 0, 8, 2, 2], [T_NATURE, 2, 8, 2, 2], [T_NATURE, 4, 8, 1, 1], [T_NATURE, 15, 9, 1, 1], [T_NATURE, 18, 9, 1, 1], [T_NATURE, 8, 8, 1, 1]],
+  rocks: [[T_NATURE, 13, 8, 2, 2], [T_NATURE, 16, 8, 2, 2], [T_NATURE, 18, 9, 1, 1]],
+  plants: [[0, 10], [1, 10], [2, 10], [3, 10], [6, 10], [7, 10], [0, 11], [1, 11], [2, 11], [3, 11], [6, 11], [7, 11], [8, 11], [9, 11]].map(([c, r]) => [T_NATURE, c, r]),
+  stones: [[T_NATURE, 15, 9], [T_NATURE, 18, 9]],
+  fence: [[T_NATURE, 1, 10, 1, 1], [T_NATURE, 2, 10, 1, 1], [T_NATURE, 6, 10, 1, 1]],   // 營地圍籬
 };
 function drawAuto(c, set, mask, x, y, seed) {
-  const s = AUTO_SETS[set];
-  if (mask === 15 && s.fill && seed > 0.7) { const f = s.fill[Math.floor(seed * 13) % s.fill.length]; return drawCell(c, s.sheet, f[0], f[1], x, y); }
-  const [dc, dr] = mask === 0 && s.single ? s.single : AUTO[mask];
+  const s = ART[set];
+  if (mask === 15) {   // 中間：大多是素色，偶爾換成有點綴的變化
+    if (s.fill && seed > 0.82) { const f = s.fill[Math.floor(seed * 13) % s.fill.length]; return drawCell(c, s.sheet, f[0], f[1], x, y); }
+    return drawCell(c, s.sheet, s.col + 1, s.row + 1, x, y);
+  }
+  const [dc, dr] = mask === 0 ? [1, 1] : AUTO[mask];   // 單格：用中間那格，比較自然
   return drawCell(c, s.sheet, s.col + dc, s.row + dr, x, y);
 }
-// 草地：大多是素色，少數有小草叢
-const GRASS = [[0, 12], [0, 12], [0, 12], [0, 12], [0, 12], [0, 12], [1, 12], [2, 12], [3, 12], [4, 12]];
-function drawGrass(c, x, y, seed) { const g = GRASS[Math.floor(seed * GRASS.length)]; return drawCell(c, T_FLOOR, g[0], g[1], x, y); }
+function drawGrass(c, x, y, seed) { const g = ART.grass[Math.floor(seed * ART.grass.length)]; return drawCell(c, T_FLOOR, g[0], g[1], x, y); }
 
-// 地面裝飾（花草、小石頭）
-const DECO_PLANTS = [[0, 10], [1, 10], [2, 10], [3, 10], [6, 10], [7, 10], [0, 11], [1, 11], [2, 11], [3, 11], [6, 11], [7, 11], [8, 11], [9, 11]];
-const DECO_STONES = [[15, 9], [18, 9]];
-function decoTile(kind, seed) { const L = kind === 'plant' ? DECO_PLANTS : DECO_STONES; return L[Math.floor(seed * L.length) % L.length]; }
+// 地面裝飾：回傳 [圖, 欄, 列]
+function decoTile(kind, seed) { const L = kind === 'plant' ? ART.plants : ART.stones; return L[Math.floor(seed * L.length) % L.length]; }
 
-// 樹（當作牆）：2×2 格的樹，(x, y) = 底部中心
-const TREES = [[0, 0], [0, 0], [16, 0], [18, 0], [2, 0], [6, 0], [14, 0]];
-function drawTree(c, x, y, seed) { const t = TREES[Math.floor(seed * TREES.length)]; return drawObj(c, T_NATURE, t[0], t[1], 2, 2, x, y + 4); }
+// 擋路的格子（樹、竹子、岩石、冰塊、石牆……），(x, y) = 格子底部中心
+function drawTree(c, x, y, seed) {
+  const t = ART.walls[Math.floor(seed * ART.walls.length) % ART.walls.length];
+  return drawObj(c, t[0], t[1], t[2], t[3], t[4], x, y + (t[3] > 1 ? 4 : 0));
+}
+const drawArt = (c, list, seed, x, y) => { const r = list[Math.floor(seed * list.length) % list.length]; return drawObj(c, r[0], r[1], r[2], r[3], r[4], x, y + 8); };
 
 // 場景物件；回傳 false 代表交給 render.js 的程式繪製
 function drawPropSprite(c, x, y, p, t) {
   const pick = L => L[Math.floor(p.seed * L.length) % L.length];
   switch (p.type) {
-    case 'rock': { const r = pick([[13, 8, 2, 2], [16, 8, 2, 2]]); return drawObj(c, T_NATURE, r[0], r[1], r[2], r[3], x, y + 8); }
-    case 'tree': { const r = pick([[0, 8, 2, 2], [2, 8, 2, 2], [4, 8, 1, 1], [15, 9, 1, 1], [18, 9, 1, 1], [8, 8, 1, 1]]); return drawObj(c, T_NATURE, r[0], r[1], r[2], r[3], x, y + 8); }
-    case 'grave': { const r = pick([[16, 8, 2, 2], [18, 9, 1, 1]]); return drawObj(c, T_NATURE, r[0], r[1], r[2], r[3], x, y + 8); }
+    case 'rock': case 'grave': return drawArt(c, ART.rocks, p.seed, x, y);
+    case 'tree': return drawArt(c, ART.obst, p.seed, x, y);
+    case 'portal': {   // 傳送陣：旋轉的魔法陣 + 光暈
+      const im = img('FX/Magic/Circle/SpriteSheetWhite.png');
+      // 深色石台底座：在雪地等亮色地面上也看得清楚
+      c.fillStyle = 'rgba(20,30,60,0.75)'; ell(c, x, y - 4, 30, 15); c.fill();
+      c.strokeStyle = 'rgba(140,210,255,0.9)'; c.lineWidth = 2; ell(c, x, y - 4, 30, 15); c.stroke();
+      c.save(); c.globalCompositeOperation = 'lighter';
+      const g = c.createRadialGradient(x, y - 4, 0, x, y - 4, 40);
+      g.addColorStop(0, `rgba(120,200,255,${0.35 + Math.sin(t * 3) * 0.1})`); g.addColorStop(1, 'rgba(120,200,255,0)');
+      c.fillStyle = g; ell(c, x, y - 4, 40, 26); c.fill();
+      if (ready(im)) { const f = Math.floor(t * 8) % 4; c.globalAlpha = 0.9; c.drawImage(im, f * 32, 0, 32, 32, snap(x - 32), snap(y - 36), 64, 64); }
+      c.restore();
+      return true;
+    }
     case 'lamp': return drawObj(c, T_NATURE, 5, 8, 1, 1, x, y + 8);
-    case 'sandbag': return drawObj(c, T_NATURE, pick([1, 2, 6]), 10, 1, 1, x, y + 8);
+    case 'sandbag': return drawArt(c, ART.fence, p.seed, x, y);
     case 'crate': return drawObj(c, T_CAMP, 3, pick([5, 6]), 1, 1, x, y + 8);
     case 'chest': return drawObj(c, T_CAMP, pick([4, 5]), 8, 1, 1, x, y + 8);
     case 'anvil': return drawObj(c, T_CAMP, 4, 6, 2, 2, x, y + 8);
@@ -293,6 +321,7 @@ function allFiles() {
   [T_FLOOR, T_WATER, T_NATURE, T_CAMP, 'FX/Projectile/Shuriken.png', 'FX/Projectile/Fireball.png', 'FX/Projectile/Kunai.png', 'FX/Projectile/EnergyBall.png',
     'Items/Potion/LifePot.png', 'Items/Potion/WaterPot.png', 'Items/Treasure/GoldCoin.png'].forEach(f => s.add(f));
   for (const w of Object.values(WEAPON_ICONS)) s.add(w.file);
+  [T_DESERT, T_DUNGEON, T_DETAIL, 'FX/Magic/Circle/SpriteSheetWhite.png'].forEach(f => s.add(f));
   return [...s];
 }
 function loadGameAssets() {

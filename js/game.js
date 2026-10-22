@@ -61,6 +61,8 @@ const G = {
   labelRects: [], packSeq: 0, uiT: 0, manaMsgT: 0, mapReady: false, showMini: true,
 };
 let P = null;
+G.zone = 'field';
+const curZone = () => ZONE_BY_ID[G.zone] || ZONES[0];
 
 // =====================================================
 //  地圖
@@ -78,7 +80,10 @@ const solidAt = (tx, ty) => tx < 0 || ty < 0 || tx >= MAP || ty >= MAP || M.soli
 const inCampDist = (x, y) => Math.hypot(x - CAMP.x, y - CAMP.y);
 
 function genMap() {
-  const R = mulberry32(20261021);
+  const Z = curZone(), Zg = Z.gen;
+  applyZoneArt(Z);
+  G.mapZone = Z.id;
+  const R = mulberry32(Z.seed);
   const ri = (a, b) => Math.floor(a + R() * (b - a + 1));
   M.tile.fill(0); M.floor.fill(0); M.wallH.fill(0); M.block.fill(0); M.solid.fill(0);
   M.deco = new Array(N);
@@ -98,7 +103,7 @@ function genMap() {
   };
 
   // 古代遺跡（石板地 + 岩壁）
-  for (let k = 0; k < 160; k++) {
+  for (let k = 0; k < Zg.buildings; k++) {
     const w = ri(5, 11), h = ri(5, 10), x0 = ri(3, MAP - w - 4), y0 = ri(3, MAP - h - 4);
     let ok = true;
     for (let y = y0 - 1; y <= y0 + h && ok; y++) for (let x = x0 - 1; x <= x0 + w; x++) {
@@ -116,21 +121,25 @@ function genMap() {
     }
     for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
       const edge = x === x0 || y === y0 || x === x0 + w - 1 || y === y0 + h - 1;
-      if (!edge) { if (R() < 0.12) addDeco(x, y, 'stone'); continue; }
+      if (!edge) {   // 內部：竹林之類的區域會長滿（fill），其他區域偶爾有碎石
+        if (Zg.fill && R() < Zg.fill) M.tile[idx(x, y)] = 1;
+        else if (R() < 0.12) addDeco(x, y, 'stone');
+        continue;
+      }
       const i = idx(x, y);
       if (doors.has(i)) continue;
-      if (R() < 0.22) { addDeco(x, y, 'stone'); continue; }
+      if (R() < Zg.gap) { addDeco(x, y, 'stone'); continue; }
       const corner = (x === x0 || x === x0 + w - 1) && (y === y0 || y === y0 + h - 1);
       M.tile[i] = 1; M.wallH[i] = clamp(baseH * 16 + ri(-12, 14) + (corner ? 18 : 0), 8, 90);
     }
   }
   paveRoads();
   // 水池
-  for (let k = 0; k < 12; k++) {
+  for (let k = 0; k < Zg.pools; k++) {
     const cx = ri(6, MAP - 7), cy = ri(6, MAP - 7);
     if (inCamp(cx, cy, 16)) continue;
-    const r = 1.2 + R() * 1.6;
-    for (let y = cy - 3; y <= cy + 3; y++) for (let x = cx - 3; x <= cx + 3; x++) {
+    const r = 1.2 + R() * Zg.poolR;
+    for (let y = cy - 4; y <= cy + 4; y++) for (let x = cx - 4; x <= cx + 4; x++) {
       if (Math.hypot(x - cx, y - cy) > r) continue;
       const i = idx(x, y);
       if (M.tile[i] === 0 && M.floor[i] === 0) M.tile[i] = 2;
@@ -161,12 +170,16 @@ function genMap() {
   // 營地物件
   const cx = Math.floor(CAMP.x), cy = Math.floor(CAMP.y);
   addProp('campfire', cx, cy, true);
-  addProp('merchant', cx + 2, cy - 2, true, { name: '行商 源藏', face: 0 });
-  addProp('guard', cx - 2, cy + 4, true, { name: '武士 雷電', face: 0 });
+  addProp('portal', cx + 1, cy + 5, false, { name: '傳送陣' });   // 每個區域都有，可以走上去
+  if (Z.hub) {   // 商人、守衛只在青葉之原
+    addProp('merchant', cx + 2, cy - 2, true, { name: '行商 源藏', face: 0 });
+    addProp('guard', cx - 2, cy + 4, true, { name: '武士 雷電', face: 0 });
+    addProp('chest', cx - 4, cy + 1, true);
+    addProp('anvil', cx + 4, cy + 1, true);
+  }
   addProp('tent', cx - 3, cy - 3, true); M.block[idx(cx - 2, cy - 3)] = 1;
   addProp('flag', cx + 3, cy + 3, true);
-  addProp('crate', cx - 3, cy + 2, true); addProp('chest', cx - 4, cy + 1, true);
-  addProp('anvil', cx + 4, cy + 1, true);
+  addProp('crate', cx - 3, cy + 2, true);
   for (let a = 0; a < Math.PI * 2; a += 0.11) {
     const deg = (a * 180 / Math.PI) % 90;
     if (deg < 14 || deg > 76) continue; // 四個出入口
@@ -180,18 +193,18 @@ function genMap() {
       if (free(x, y) && (!cond || cond(x, y))) { addProp(type, x, y, blk); n++; }
     }
   };
-  scatter('barrel', 30, true);
-  scatter('crate', 30, true);
-  scatter('tree', 70, true, (x, y) => M.floor[idx(x, y)] === 0);
-  scatter('lamp', 18, true, (x, y) => M.floor[idx(x, y)] === 1);
-  scatter('grave', 30, true, (x, y) => M.floor[idx(x, y)] !== 1);
+  scatter('barrel', Zg.fires, true);
+  scatter('crate', Zg.crates, true);
+  scatter('tree', Zg.obst, true, (x, y) => M.floor[idx(x, y)] === 0);
+  scatter('lamp', Zg.signs, true, (x, y) => M.floor[idx(x, y)] === 1);
+  scatter('grave', Zg.rocks, true, (x, y) => M.floor[idx(x, y)] !== 1);
   for (let k = 0; k < 1400; k++) {
     const x = ri(2, MAP - 3), y = ri(2, MAP - 3), i = idx(x, y);
     if (M.tile[i] !== 0 || inCamp(x, y, 9) || M.deco[i]) continue;
     addDeco(x, y, M.floor[i] === 0 ? (R() < 0.93 ? 'plant' : 'bones') : (R() < 0.6 ? 'stone' : 'bones'));
   }
 
-  G.lights = G.props.filter(p => p.type === 'barrel' || p.type === 'campfire' || p.type === 'shrine');
+  G.lights = G.props.filter(p => p.type === 'barrel' || p.type === 'campfire' || p.type === 'shrine' || p.type === 'portal');
   buildMinimapBase();
   G.mapReady = true;
 }
@@ -303,7 +316,7 @@ function findPath(fx, fy, tx, ty, limit = 4000, r = 0.3) {
 function newPlayer() {
   const p = {
     level: 1, exp: 0, str: 20, dex: 15, vit: 20, ene: 10, statPts: 0, skillPts: 1, skills: {},
-    gold: 100, inv: new Array(40).fill(null), equip: {}, potions: { hp: 5, mp: 3 }, rightSkill: 'burst',
+    gold: 100, inv: new Array(40).fill(null), equip: {}, potions: { hp: 5, mp: 3 }, rightSkill: 'burst', zone: 'field',
   };
   p.equip.weapon = genItem(1, 0, 'weapon', 'rifle');
   p.equip.armor = genItem(1, 0, 'armor');
@@ -548,7 +561,7 @@ function createEnemy(type, x, y, lvl, rank, packId) {
   if (rank === 1) name = '精英 ' + d.name;
   if (rank === 2) name = choice(UNIQUE_NAMES) + ' · ' + d.name;
   return {
-    type, def: d, name, x, y, r: d.r, lvl, rank, hp, maxHp: hp, dmg: monDmg(lvl) * d.dmg * dm,
+    type: d.role, key: type, def: d, name, x, y, r: d.r, lvl, rank, hp, maxHp: hp, dmg: monDmg(lvl) * d.dmg * dm,
     speed: d.speed * (rank ? 1.1 : 1) * rand(0.92, 1.08), atkCd: rand(0.3, 1.2), aggro: false, anim: rand(0, 10),
     hitFlash: 0, atkAnim: 0, atkDur: 0.3, castAnim: 0, face: rand(0, 6.28), mv: false, runT: rand(0, 1), path: null, pathT: 0, directT: 0, direct: false, faceX: 1, novaCd: 4,
     wander: null, wanderT: rand(1, 4), dead: false, packId, homeX: x, homeY: y,
@@ -566,12 +579,15 @@ function randomSpawnPoint(minD, maxD) {
 }
 function spawnPack() {
   const pt = randomSpawnPoint(13, 34); if (!pt) return;
-  const tot = PACKS.reduce((s, p) => s + p.w, 0);
-  let r = Math.random() * tot, pk = PACKS[0];
-  for (const p of PACKS) { if ((r -= p.w) <= 0) { pk = p; break; } }
-  const types = [...pk.types];
-  for (let i = rint(0, 2); i > 0; i--) types.push(pk.types[pk.types.length - 1]);
-  const lvl = clamp(P.level + rint(-1, 1) + Math.floor(inCampDist(pt.x, pt.y) / 18), 1, MAX_LEVEL);
+  const z = curZone();
+  const tot = PACK_ROLES.reduce((s, p) => s + p.w, 0);
+  let r = Math.random() * tot, pk = PACK_ROLES[0];
+  for (const p of PACK_ROLES) { if ((r -= p.w) <= 0) { pk = p; break; } }
+  const types = pk.types.map(role => zoneMonster(z, role));
+  for (let i = rint(0, 2); i > 0; i--) types.push(types[types.length - 1]);
+  // 等級：至少是區域的建議等級；玩家比較強時跟著玩家，回到低等區域也不會太簡單
+  const far = inCampDist(pt.x, pt.y);
+  const lvl = clamp(Math.max(z.lvl + Math.floor(far / 12), P.level + rint(-1, 1) + Math.floor(far / 18)), 1, MAX_LEVEL);
   const roll = Math.random(), rank = roll < 0.04 ? 2 : roll < 0.15 ? 1 : 0;
   const pid = ++G.packSeq;
   types.forEach((t, i) => {
@@ -583,11 +599,12 @@ function spawnPack() {
 }
 function spawnBoss() {
   const pt = randomSpawnPoint(10, 16); if (!pt) return;
-  const e = createEnemy('boss', pt.x, pt.y, clamp(P.level + 2, 1, MAX_LEVEL), 3, ++G.packSeq);
+  const z = curZone(), key = zoneMonster(z, 'boss');
+  const e = createEnemy(key, pt.x, pt.y, clamp(Math.max(z.lvl + 5, P.level + 2), 1, MAX_LEVEL), 3, ++G.packSeq);
   G.enemies.push(e);
   G.bossAlive = true; G.killsSinceBoss = 0;
   Snd.play('alert');
-  addLog('陰風四起……「鬼王 · 酒吞童子」現身了！', '#ff6a3a');
+  addLog(`陰風四起……「${MONSTERS[key].name}」現身了！`, '#ff6a3a');
   G.shake = 12;
 }
 function aggro(e) {
@@ -621,7 +638,7 @@ function killEnemy(e) {
   if (G.corpses.length > 40) G.corpses.shift();
   G.decals.push({ x: e.x, y: e.y, r: e.type === 'boss' ? 1.6 : 0.6, color: e.def.blood, t: 0, life: 25 });
   G.killsSinceBoss++;
-  if (e.type === 'boss') { G.bossAlive = false; addLog('酒吞童子已被擊敗！寶物散落一地！', '#ffd23f'); G.shake = 15; Snd.play('victory'); }
+  if (e.type === 'boss') { G.bossAlive = false; addLog(`${e.def.name}已被擊敗！寶物散落一地！`, '#ffd23f'); G.shake = 15; Snd.play('victory'); }
 }
 function enemyShoot(e, ang, opt = {}) {
   const sp = opt.speed || 7;
@@ -759,6 +776,7 @@ function doGoal(g) {
   if (g.kind === 'pickup') { if (G.ground.includes(g.ref)) pickupItem(g.ref); }
   else if (g.ref.type === 'merchant') openShop();
   else if (g.ref.type === 'shrine') useShrine(g.ref);
+  else if (g.ref.type === 'portal') openPanel('travel');
 }
 function useShrine(s) {
   if (s.cd > 0) { addLog(`地藏的力量正在恢復（${Math.ceil(s.cd)} 秒）`, '#aaa'); return; }
@@ -966,7 +984,7 @@ function updatePlayer(dt) {
   }
   if (G.shopOpen) {
     const mer = G.props.find(q => q.type === 'merchant');
-    if (dist(p, mer) > 4) { G.shopOpen = false; closePanel('shop'); }
+    if (!mer || dist(p, mer) > 4) { G.shopOpen = false; closePanel('shop'); }
   }
 }
 
@@ -976,7 +994,7 @@ function update(dt) {
   if (G.musicT <= 0 && !P.dead) {
     G.musicT = 0.5;
     const bossFight = G.enemies.some(e => e.type === 'boss' && e.aggro && dist(e, P) < 16);
-    Snd.music(bossFight ? 'boss' : inCampDist(P.x, P.y) < CAMP.r + 1 ? 'camp' : 'field');
+    Snd.music(bossFight ? 'boss' : inCampDist(P.x, P.y) < CAMP.r + 1 ? 'camp' : curZone().music);
   }
   updatePlayer(dt);
   if (TOUCH) TouchUI.update(dt);
@@ -1014,7 +1032,7 @@ function computeHover() {
   }
   if (!h) {
     for (const p of G.props) {
-      if (p.type !== 'merchant' && p.type !== 'shrine') continue;
+      if (p.type !== 'merchant' && p.type !== 'shrine' && p.type !== 'portal') continue;
       const s = toScreen(p.x, p.y), hw = p.type === 'shrine' ? 26 : 16, hh = p.type === 'shrine' ? 70 : 40;
       if (Math.abs(mx - s.x) < hw && my < s.y + 8 && my > s.y - hh) { h = { kind: 'prop', ref: p }; break; }
     }
@@ -1034,8 +1052,8 @@ function drawDeco(c, x, y, cx, cy, list) {
   const sd = M.seed[idx(x, y)];
   for (const d of list) {
     if (d === 'plant' || d === 'stone') {
-      const [col, row] = decoTile(d, (sd * 7.3) % 1);
-      drawCell(c, T_NATURE, col, row, cx - 16 + (sd - 0.5) * 8, cy - 16 + ((sd * 3.7) % 1 - 0.5) * 8);
+      const [sheet, col, row] = decoTile(d, (sd * 7.3) % 1);
+      drawCell(c, sheet, col, row, cx - 16 + (sd - 0.5) * 8, cy - 16 + ((sd * 3.7) % 1 - 0.5) * 8);
       continue;
     }
     if (d === 'bones') {
@@ -1325,7 +1343,8 @@ function drawLighting(ps) {
   lctx.setTransform(1, 0, 0, 1, 0, 0);
   lctx.globalCompositeOperation = 'source-over';
   lctx.clearRect(0, 0, lw, lh);
-  lctx.fillStyle = 'rgba(10,8,24,0.22)'; lctx.fillRect(0, 0, lw, lh);
+  const ZL = curZone().light;
+  lctx.fillStyle = `rgba(${ZL.rgb},${ZL.a})`; lctx.fillRect(0, 0, lw, lh);
   lctx.globalCompositeOperation = 'destination-out';
   lctx.setTransform(K, 0, 0, K, 0, 0);   // 下面用邏輯座標畫，自動縮成低解析度
   const L = (x, y, rad, a) => {
@@ -1376,15 +1395,27 @@ function drawLighting(ps) {
 }
 
 // 飄浮的花粉與螢火蟲
+// 天氣粒子：花粉、落葉、風沙、雪、塵埃、火星（依區域）
+const WEATHER = {
+  pollen: { n: 45, init: () => ({ vx: rand(-6, 6), vy: rand(-8, -2), s: rand(0.8, 1.8), fly: Math.random() < 0.35 }), color: a => a.fly ? `rgba(210,255,120,${0.35 + Math.sin(G.t * 3 + a.ph) * 0.35})` : 'rgba(255,240,200,0.3)', glow: true },
+  leaves: { n: 30, init: () => ({ vx: rand(-14, -4), vy: rand(10, 22), s: rand(1.4, 2.4) }), color: a => (a.ph > 3 ? 'rgba(120,190,80,0.75)' : 'rgba(170,210,90,0.7)'), rect: true },
+  sand: { n: 60, init: () => ({ vx: rand(40, 80), vy: rand(-4, 4), s: rand(0.6, 1.3) }), color: () => 'rgba(240,200,140,0.45)' },
+  snow: { n: 90, init: () => ({ vx: rand(-8, 4), vy: rand(14, 30), s: rand(0.8, 2) }), color: () => 'rgba(255,255,255,0.8)' },
+  dust: { n: 25, init: () => ({ vx: rand(-3, 3), vy: rand(-3, 3), s: rand(0.6, 1.2) }), color: a => `rgba(200,200,220,${0.15 + Math.sin(G.t * 2 + a.ph) * 0.1})` },
+  embers: { n: 50, init: () => ({ vx: rand(-6, 6), vy: rand(-26, -10), s: rand(0.7, 1.6) }), color: a => `rgba(255,${110 + (a.ph * 20 | 0)},40,${0.5 + Math.sin(G.t * 5 + a.ph) * 0.3})`, glow: true },
+};
 function drawAsh() {
-  if (G.ash.length < 45) G.ash.push({ x: Math.random() * W, y: Math.random() * H, vx: rand(-6, 6), vy: rand(-8, -2), s: rand(0.8, 1.8), fly: Math.random() < 0.35, ph: rand(0, 6) });
-  ctx.save(); ctx.globalCompositeOperation = 'lighter';
+  const Wd = WEATHER[curZone().weather] || WEATHER.pollen;
+  if (G.ashKind !== curZone().weather) { G.ash = []; G.ashKind = curZone().weather; }
+  if (G.ash.length < Wd.n) G.ash.push(Object.assign({ x: Math.random() * W, y: Math.random() * H, ph: rand(0, 6) }, Wd.init()));
+  ctx.save(); if (Wd.glow) ctx.globalCompositeOperation = 'lighter';
   for (const a of G.ash) {
     a.x += a.vx * 0.016 + Math.sin(G.t * 0.8 + a.ph) * 0.25; a.y += a.vy * 0.016;
     if (a.y < -5) { a.y = H + 5; a.x = Math.random() * W; }
-    const k = a.fly ? 0.35 + Math.sin(G.t * 3 + a.ph) * 0.35 : 0.3;
-    ctx.fillStyle = a.fly ? `rgba(210,255,120,${k})` : `rgba(255,240,200,${k})`;
-    ell(ctx, a.x, a.y, a.s, a.s); ctx.fill();
+    if (a.y > H + 5) { a.y = -5; a.x = Math.random() * W; }
+    if (a.x > W + 5) a.x = -5; else if (a.x < -5) a.x = W + 5;
+    ctx.fillStyle = Wd.color(a);
+    if (Wd.rect) ctx.fillRect(a.x, a.y, a.s * 1.6, a.s * 0.8); else { ell(ctx, a.x, a.y, a.s, a.s); ctx.fill(); }
   }
   ctx.restore();
 }
@@ -1408,7 +1439,7 @@ function drawOverlayTexts(hov) {
     if (s.x < -50 || s.x > W + 50 || s.y < -50 || s.y > H + 100) continue;
     const y = s.y - (p.type === 'shrine' ? 80 : 44);
     ctx.fillStyle = 'rgba(0,0,0,0.6)'; const tw = ctx.measureText(p.name).width + 10 * k; ctx.fillRect(s.x - tw / 2, y - 9 * k, tw, 18 * k);
-    ctx.fillStyle = p.type === 'shrine' ? (p.cd > 0 ? '#887' : '#ffd98a') : '#9f9'; ctx.fillText(p.name, s.x, y);
+    ctx.fillStyle = p.type === 'shrine' ? (p.cd > 0 ? '#887' : '#ffd98a') : p.type === 'portal' ? '#8cf' : '#9f9'; ctx.fillText(p.name, s.x, y);
   }
   // 地上物品標籤
   ctx.font = `${12 * k}px "Microsoft JhengHei", sans-serif`;
@@ -1457,11 +1488,12 @@ function buildMinimapBase() {
   mmBase.width = MAP; mmBase.height = MAP;
   const c = mmBase.getContext('2d'), img = c.createImageData(MAP, MAP);
   for (let i = 0; i < N; i++) {
-    let r = 120, g = 170, b = 60, a = 200;
-    if (M.tile[i] === 1) { r = 40; g = 90; b = 40; }
-    else if (M.tile[i] === 2) { r = 50; g = 100; b = 160; }
-    else if (M.floor[i] === 1 || M.floor[i] === 2) { r = 170; g = 110; b = 70; }
-    else if (M.floor[i] === 3) { r = 190; g = 140; b = 80; }
+    const C = curZone().mm;
+    let [r, g, b] = C.grass, a = 200;
+    if (M.tile[i] === 1) [r, g, b] = C.wall;
+    else if (M.tile[i] === 2) [r, g, b] = C.water;
+    else if (M.floor[i] === 1 || M.floor[i] === 2) [r, g, b] = C.path;
+    else if (M.floor[i] === 3) [r, g, b] = C.camp;
     img.data[i * 4] = r; img.data[i * 4 + 1] = g; img.data[i * 4 + 2] = b; img.data[i * 4 + 3] = a;
   }
   c.putImageData(img, 0, 0);
@@ -1494,7 +1526,7 @@ function addLog(text, color = '#ddd') {
   setTimeout(() => d.classList.add('fade'), 6000);
   setTimeout(() => d.remove(), 7000);
 }
-const PANELS = { char: 'panelChar', inv: 'panelInv', skill: 'panelSkill', shop: 'panelShop' };
+const PANELS = { char: 'panelChar', inv: 'panelInv', skill: 'panelSkill', shop: 'panelShop', travel: 'panelTravel' };
 const LEFT = ['char', 'skill', 'shop'];
 const isOpen = k => !$(PANELS[k]).classList.contains('hidden');
 function openPanel(k) {
@@ -1505,7 +1537,36 @@ function openPanel(k) {
 }
 function closePanel(k) { $(PANELS[k]).classList.add('hidden'); if (k === 'shop') G.shopOpen = false; hideTip(); }
 function togglePanel(k) { isOpen(k) ? closePanel(k) : openPanel(k); }
-function renderPanel(k) { ({ char: renderChar, inv: renderInv, skill: renderSkills, shop: renderShop })[k](); }
+function renderPanel(k) { ({ char: renderChar, inv: renderInv, skill: renderSkills, shop: renderShop, travel: renderTravel })[k](); }
+
+// ---------- 傳送陣：選擇要去的區域 ----------
+function renderTravel() {
+  $('travelList').innerHTML = ZONES.map(z => {
+    const cur = z.id === G.zone, weak = P.level < z.lvl;
+    return `<button class="zoneBtn${cur ? ' cur' : ''}" data-z="${z.id}">
+      <b>${z.name}</b><span class="${weak ? 'warn' : ''}">建議等級 ${z.lvl}+${cur ? '（目前所在）' : ''}</span><small>${z.desc}</small></button>`;
+  }).join('');
+  $('travelList').querySelectorAll('button').forEach(b => { b.onclick = () => travelTo(b.dataset.z); });
+}
+function travelTo(id) {
+  closePanel('travel');
+  if (!ZONE_BY_ID[id] || id === G.zone || P.dead) return;
+  for (const k in PANELS) closePanel(k);
+  G.zone = id; P.zone = id;
+  genMap();
+  Object.assign(G, { enemies: [], bullets: [], ebullets: [], ground: [], parts: [], texts: [], fx: [], turrets: [], decals: [], corpses: [], killsSinceBoss: 0, bossAlive: false });
+  P.x = CAMP.x; P.y = CAMP.y + 2.2; P.path = []; P.target = null; P.goal = null;
+  G.cam.x = P.x * TW / 2; G.cam.y = P.y * TH / 2 - 12;
+  invalidateGround();
+  for (let i = 0; i < 10; i++) spawnPack();
+  const z = curZone();
+  $('zoneName').textContent = z.name;
+  G.fx.push({ type: 'tele', x: P.x, y: P.y, t: 0 });
+  Snd.play('tele');
+  addLog(`傳送到「${z.name}」（建議等級 ${z.lvl}+）`, '#8cf');
+  if (P.level < z.lvl) addLog('這裡的妖怪比你強很多，小心！', '#f88');
+  saveGame();
+}
 function refreshPanels() { for (const k in PANELS) if (isOpen(k)) renderPanel(k); renderHotbar(); }
 
 // ---------- 提示框 ----------
@@ -1913,7 +1974,7 @@ $('potMpBtn').onclick = () => usePotion('mp');
 function saveGame() {
   if (!P) return false;
   if (G.testMode) return 'test';
-  const keys = ['level', 'exp', 'str', 'dex', 'vit', 'ene', 'statPts', 'skillPts', 'skills', 'gold', 'inv', 'equip', 'potions', 'rightSkill'];
+  const keys = ['level', 'exp', 'str', 'dex', 'vit', 'ene', 'statPts', 'skillPts', 'skills', 'gold', 'inv', 'equip', 'potions', 'rightSkill', 'zone'];
   const d = { v: 1, savedAt: Date.now() };
   for (const k of keys) d[k] = P[k];
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); G.lastSave = d.savedAt; return true; } catch (e) { return false; }
@@ -2011,8 +2072,10 @@ async function startGame(p) {
   $('btnNew').textContent = '準備地圖中…';
   await new Promise(r => setTimeout(r, 30));   // 讓「準備地圖中」的文字先顯示出來
   Diag.mute(4000);   // 準備階段本來就會花一點時間，不算畫面停頓
-  if (!G.mapReady) genMap();
   P = p;
+  G.zone = ZONE_BY_ID[p.zone] ? p.zone : 'field'; P.zone = G.zone;
+  if (!G.mapReady || G.mapZone !== G.zone) genMap();
+  $('zoneName').textContent = curZone().name;
   Object.assign(G, { enemies: [], bullets: [], ebullets: [], ground: [], parts: [], texts: [], fx: [], turrets: [], decals: [], corpses: [], killsSinceBoss: 0, bossAlive: false, shopStock: [], shopLevel: -1 });
   for (const pr of G.props) pr.cd = 0;
   for (let i = 0; i < 10; i++) spawnPack();
@@ -2027,7 +2090,7 @@ async function startGame(p) {
   $('title').classList.add('hidden');
   document.querySelectorAll('.ingame').forEach(e => e.classList.remove('hidden'));
   renderHotbar();
-  addLog('歡迎來到青葉之原。', '#ffd98a');
+  addLog(`歡迎來到${curZone().name}。`, '#ffd98a');
   addLog(TOUCH ? '左下搖桿移動，按住「攻擊」自動攻擊，上方按鈕開技能樹。' : '左鍵移動/攻擊，右鍵施放技能，K 開技能樹。', '#ccc');
   saveGame();
 }
@@ -2102,6 +2165,9 @@ loadAssets();
 if (location.hash.startsWith('#play')) {
   G.testMode = true; G.showFps = true;
   startGame(newPlayer()).then(() => {
+    const zm = location.hash.match(/zone-(\w+)/);
+    if (zm) travelTo(zm[1]);
+    if (location.hash.includes('travel')) { openPanel('travel'); return; }   // 測試：傳送面板
     if (location.hash.includes('pickup')) {   // 測試拾取：金幣、藥水、裝備各撿一次
       P.inv[0] = undefined;   // 模擬舊 bug 留下的壞格子
       for (const o of [{ gold: 50 }, { potion: 'hp' }, { item: genItem(5, 2) }]) { spawnGround(P.x, P.y, o); pickupItem(G.ground[G.ground.length - 1]); }
@@ -2139,9 +2205,9 @@ if (location.hash.startsWith('#play')) {
     for (const k of ['weapon', 'armor', 'helm', 'gloves', 'boots', 'belt']) P.equip[k] = genItem(50, 2, k, 'rail');
     P.st = calcStats(P); P.hp = P.st.maxHp;
     G.enemies = [];
-    Object.keys(MONSTERS).forEach((t, i) => {
+    Object.keys(curZone().monsters).map(role => zoneMonster(curZone(), role)).forEach((t, i) => {
       const a = i / 7 * Math.PI * 2;
-      const e = createEnemy(t, P.x + Math.cos(a) * 3.2, P.y + Math.sin(a) * 3.2, 5, t === 'boss' ? 3 : i % 3, 900 + i);
+      const e = createEnemy(t, P.x + Math.cos(a) * 3.2, P.y + Math.sin(a) * 3.2, 5, t.endsWith('_boss') ? 3 : i % 3, 900 + i);
       e.aggro = true; G.enemies.push(e);
     });
     P.target = G.enemies[0];
@@ -2151,7 +2217,7 @@ if (location.hash.startsWith('#play')) {
 // 診斷報告用的狀態快照（F2）
 Diag.setSnapshot(() => {
   const o = { 畫面: G.state, FPS: Math.round(G.fps), 每幀ms: +G.frameMs.toFixed(1), 最慢一幀ms: Math.round(G.worstShow || 0),
-    圖片MB: Math.round(Sprites.memoryMB()), 畫質: QUALITY_NAME[qualityIdx], 縮放: +ZOOM.toFixed(2), 地板平移: gbuf.shifts };
+    區域: G.zone, 圖片MB: Math.round(Sprites.memoryMB()), 畫質: QUALITY_NAME[qualityIdx], 縮放: +ZOOM.toFixed(2), 地板平移: gbuf.shifts };
   o.分段ms = Object.fromEntries(Object.entries(PROF).map(([k, v]) => [k, +v.toFixed(1)]));
   o.音訊 = Snd.status();
   if (P) Object.assign(o, { 等級: P.level, 位置: [+P.x.toFixed(1), +P.y.toFixed(1)], 生命: Math.round(P.hp), 怪物: G.enemies.length, 屍體: G.corpses.length, 粒子: G.parts.length, 箭矢: G.bullets.length + G.ebullets.length });

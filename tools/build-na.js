@@ -27,6 +27,22 @@ const FILES = [
   'Items/Potion/LifePot.png', 'Items/Potion/WaterPot.png', 'Items/Treasure/GoldCoin.png',
   // 武器圖示（背包、商店）
   ...['Shuriken', 'Kunai', 'Caltrop', 'Dynamite'].map(n => `Items/Projectile/${n}.png`), 'FX/Projectile/BigShuriken.png',
+  // ---- 其他區域：竹林、沙漠、雪地、地城、鬼王城 ----
+  // 怪物（檔名不一定是 SpriteSheet.png）
+  ...[['Bamboo'], ['BambooYellow'], ['Racoon'], ['KappaGreen'], ['Mushroom', 'mushroom'], ['Snake', 'Snake'], ['Lizard', 'Lizard'],
+    ['Mole', 'Mole'], ['Reptile', 'Reptile'], ['DragonYellow'], ['Beast2', 'Beast2'], ['SkullBlue'], ['Owl', 'Owl'], ['Axolot'],
+    ['Eye2', 'Eye2'], ['Spirit2'], ['Bear'], ['Skull'], ['SpiderRed'], ['Mollusc', 'Mollusc'], ['Eye', 'Eye'], ['Octopus'],
+    ['Cyclope2'], ['Beast', 'Beast'], ['Dragon'], ['LanternRed'], ['Flam2']].map(([d, f]) => `Actor/Monster/${d}/${f || 'SpriteSheet'}.png`),
+  'Actor/Character/NinjaBlue/SpriteSheet.png',
+  // 首領
+  ...['Idle', 'Jump', 'Hit'].map(a => `Actor/Boss/GiantSlime/${a}.png`),
+  ...['Walk', 'Idle', 'Attack', 'Hit'].map(a => `Actor/Boss/GiantBamboo/${a}.png`),
+  ...['Walk', 'Idle', 'Attack'].map(a => `Actor/Boss/TenguRed/${a}.png`),
+  ...['Idle', 'Hit'].map(a => `Actor/Boss/GiantSpirit/${a}.png`),
+  ...['Walk', 'Idle', 'Shoot'].map(a => `Actor/Boss/SquidGreen/${a}.png`),
+  // 圖塊與傳送陣
+  ...['TilesetDesert', 'TilesetDungeon', 'TilesetFloorDetail'].map(n => `Backgrounds/Tilesets/${n}.png`),
+  'FX/Magic/Circle/SpriteSheetWhite.png',
   // 授權說明
   'LICENSE.txt', 'README.md',
 ];

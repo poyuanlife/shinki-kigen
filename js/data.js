@@ -134,25 +134,7 @@ const SKILL_MAX = 20;
 function shieldAmount(l, st) { return Math.round(40 + l * 30 + (st ? st.maxMp * 1.5 : 0)); }
 
 // ---------- 怪物 ----------
-// spr = 外觀（見 gfx.js 的 SPEC）、scale = 額外放大、fly = 會飛（上下飄）、shot = 遠程攻擊的投擲物
-const MONSTERS = {
-  ghoul:   { name: '綠史萊姆', hp: 1.0, dmg: 1.0, speed: 2.3, r: 0.32, melee: true, range: 0.9, atkCd: 1.1, exp: 1.0, blood: '#6fd24a', spr: 'slime', scale: 1.1 },
-  hound:   { name: '吸血蝙蝠', hp: 0.7, dmg: 0.7, speed: 4.3, r: 0.3, melee: true, range: 0.9, atkCd: 0.8, exp: 0.9, blood: '#7a8fd8', spr: 'bat', fly: true },
-  skel:    { name: '骷髏武士', hp: 1.3, dmg: 1.1, speed: 2.0, r: 0.32, melee: true, range: 0.95, atkCd: 1.2, exp: 1.2, blood: '#e8e0c8', spr: 'skeleton' },
-  archer:  { name: '赤忍', hp: 0.75, dmg: 0.9, speed: 2.4, r: 0.3, melee: false, range: 7, atkCd: 1.6, exp: 1.1, blood: '#c83030', spr: 'ninjared', shot: 'kunai' },
-  cultist: { name: '鬼火', hp: 0.8, dmg: 1.1, speed: 2.0, r: 0.3, melee: false, range: 6, atkCd: 1.8, exp: 1.2, blood: '#ff8a30', spr: 'flam', fly: true, shot: 'fire' },
-  brute:   { name: '獨眼鬼', hp: 2.6, dmg: 1.8, speed: 1.7, r: 0.5, melee: true, range: 1.2, atkCd: 1.6, exp: 2.2, blood: '#8a5030', spr: 'cyclope', scale: 1.7 },
-  boss:    { name: '鬼王 · 酒吞童子', hp: 16, dmg: 2.4, speed: 2.2, r: 0.6, melee: true, range: 1.7, atkCd: 1.4, exp: 20, blood: '#ff5030', spr: 'demon', scale: 1 },
-};
-const PACKS = [
-  { w: 5, types: ['ghoul', 'ghoul', 'ghoul', 'ghoul'] },
-  { w: 3, types: ['hound', 'hound', 'hound'] },
-  { w: 3, types: ['skel', 'skel', 'archer'] },
-  { w: 3, types: ['cultist', 'ghoul', 'ghoul'] },
-  { w: 2, types: ['brute', 'ghoul', 'ghoul'] },
-  { w: 2, types: ['archer', 'archer', 'skel'] },
-  { w: 2, types: ['cultist', 'cultist', 'hound'] },
-];
+// 怪物表（MONSTERS）與怪物群組成改由 zones.js 依區域產生
 const UNIQUE_NAMES = ['碎骨', '血染', '腐朽', '瘟疫', '無面', '焚城', '寒霜', '鐵顎'];
 
 // ---------- 數值曲線 ----------
