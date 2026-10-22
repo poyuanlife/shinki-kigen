@@ -54,7 +54,7 @@ function cycleQuality() {
 addEventListener('resize', resize); resize();
 
 const G = {
-  state: 'title', t: 0, enemies: [], bullets: [], ebullets: [], ground: [], parts: [], texts: [], fx: [],
+  state: 'home', t: 0, enemies: [], bullets: [], ebullets: [], ground: [], parts: [], texts: [], fx: [],
   turrets: [], decals: [], props: [], lights: [], ash: [], corpses: [], cam: { x: 0, y: 0 }, shake: 0,
   mouse: { x: 0, y: 0, down: false, rdown: false, mode: null, repath: 0 }, hover: null, keys: {},
   shopOpen: false, shopStock: [], shopLevel: -1, killsSinceBoss: 0, bossAlive: false, spawnT: 0, saveT: 0,
@@ -2092,6 +2092,7 @@ function loadAssets() {
   return assetsReady;
 }
 async function startGame(p) {
+  if (typeof Home !== 'undefined' && Home.active) Home.skip();
   const btns = [$('btnNew'), $('btnLoad')];
   btns.forEach(b => { b.disabled = true; b.dataset.label = b.textContent; });
   $('btnNew').textContent = '載入素材中…';
@@ -2183,6 +2184,7 @@ function frameBody(now) {
     G.uiT -= dt;
     if (G.uiT <= 0) { G.uiT = 0.05; updateHUD(); if (isOpen('char')) { G.charT = (G.charT || 0) - 1; if (G.charT <= 0) { G.charT = 10; renderChar(); } } }
   } else if (G.state === 'title') drawPortrait(now / 1000);
+  else if (G.state === 'home') Home.draw(now / 1000);
 }
 
 requestAnimationFrame(frame);

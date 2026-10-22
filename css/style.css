@@ -313,3 +313,17 @@ html.touch #skillPick { left: 50% !important; top: 50% !important; transform: tr
 .spHint, .spEmpty { color: #888; font-size: 11.5px; margin: 6px 2px 0; }
 html.touch .spItem { padding: 10px; font-size: 15px; }
 #tAtkSwap { right: 66px; bottom: 66px; width: 30px; height: 30px; font-size: 15px; background: #2a2014; border: 2px solid #c79a46; color: #f3d48a; z-index: 2; }
+
+/* ---------- 首頁 ---------- */
+#home { position: fixed; inset: 0; z-index: 55; cursor: pointer; overflow: hidden; background: #0d0a08; transition: opacity .45s; }
+#home.leaving { opacity: 0; pointer-events: none; }
+#homeBg { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+.homeBox { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-58%); text-align: center; pointer-events: none; }
+.homeLogo { font-size: clamp(48px, 11vw, 120px); font-weight: 900; letter-spacing: 0.18em; color: #f3d48a;
+  text-shadow: 0 0 24px rgba(255,170,60,0.7), 0 6px 0 #6b3b12, 0 10px 24px #000; animation: homeIn 1.2s ease-out; }
+.homeSub { letter-spacing: 0.9em; color: #d9b36a; font-size: clamp(12px, 1.6vw, 18px); margin-top: 4px; text-shadow: 0 2px 6px #000; }
+.homeTag { color: #e8dcc4; margin-top: 18px; font-size: clamp(13px, 1.8vw, 18px); text-shadow: 0 2px 6px #000; }
+.homeHint { margin-top: 9vh; color: #fff; font-size: clamp(16px, 2.2vw, 22px); letter-spacing: 0.3em; text-shadow: 0 2px 8px #000; animation: blink 1.6s ease-in-out infinite; }
+.homeFoot { position: absolute; left: 0; right: 0; bottom: calc(env(safe-area-inset-bottom) + 12px); text-align: center; color: #9a8b70; font-size: 12px; text-shadow: 0 1px 3px #000; pointer-events: none; }
+@keyframes blink { 50% { opacity: 0.25; } }
+@keyframes homeIn { from { opacity: 0; transform: scale(1.08); letter-spacing: 0.4em; } to { opacity: 1; } }

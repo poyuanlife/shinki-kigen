@@ -17,8 +17,20 @@
 <body>
 <canvas id="game"></canvas>
 
-<!-- 標題畫面 -->
-<div id="title">
+<!-- 首頁 -->
+<div id="home">
+  <canvas id="homeBg"></canvas>
+  <div class="homeBox">
+    <div class="homeLogo">神機紀元</div>
+    <div class="homeSub">DEUS · MACHINA</div>
+    <div class="homeTag">和風忍者打寶動作 RPG</div>
+    <div class="homeHint" id="homeHint">點擊任意處開始</div>
+  </div>
+  <div class="homeFoot">測試版　｜　美術與音樂：Ninja Adventure（Pixel-boy &amp; AAA，CC0）</div>
+</div>
+
+<!-- 人物選擇畫面 -->
+<div id="title" class="hidden">
   <div class="titleBox">
     <div class="logo">神機紀元</div>
     <div class="logoSub">DEUS · MACHINA</div>
@@ -162,6 +174,7 @@
 <script src="js/skillbar.js"></script>
 <script src="js/touch.js"></script>
 <script src="js/game.js"></script>
+<script src="js/home.js"></script>
 <script>
   // 安裝成 App（PWA）用：只在 http/https 下註冊
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
