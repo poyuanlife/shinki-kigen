@@ -894,7 +894,7 @@ function updatePlayer(dt) {
     p.gatT -= dt;
     while (p.gatT <= 0) {
       p.gatT += 1 / 15;
-      const m = mouseWorld(), ang = Math.atan2(m.y - p.y, m.x - p.x);
+      const m = TOUCH ? TouchUI.aim() : mouseWorld(), ang = Math.atan2(m.y - p.y, m.x - p.x);
       p.face = ang;
       fireBullet(p, ang + rand(-0.09, 0.09), (55 + s.lv('gatling') * 6) / 100);
     }
@@ -936,7 +936,16 @@ function updatePlayer(dt) {
     else if (!p.path.length) p.goal = null;
   }
 
-  if (p.path.length) {
+  const joy = TouchUI.joy;
+  if (joy.on && joy.mag > 0.15) {
+    p.path = []; p.goal = null; p.target = null;
+    const step = s.moveSpeed * dt * Math.min(1, joy.mag * 1.25);
+    moveBy(p, joy.x * step, joy.y * step);
+    if (!(p.buffs.gatling > 0) && !(p.act && p.act.n === 'shoot')) p.face = Math.atan2(joy.y, joy.x);
+    p.moving = Math.min(1, p.moving + dt * 8);
+    p.walk += dt * 11 * (s.moveSpeed / 4);
+    p.runT += dt * (s.moveSpeed / 4);
+  } else if (p.path.length) {
     const t = p.path[0], dx = t.x - p.x, dy = t.y - p.y, d = Math.hypot(dx, dy), step = s.moveSpeed * dt;
     if (d <= step) { moveBy(p, dx, dy); p.path.shift(); }
     else if (!moveBy(p, dx / d * step, dy / d * step)) p.path = [];
@@ -970,6 +979,7 @@ function update(dt) {
     Snd.music(bossFight ? 'boss' : inCampDist(P.x, P.y) < CAMP.r + 1 ? 'camp' : 'field');
   }
   updatePlayer(dt);
+  if (TOUCH) TouchUI.update(dt);
   updateEnemies(dt);
   updateBullets(dt);
   updateTurrets(dt);
@@ -1488,7 +1498,8 @@ const PANELS = { char: 'panelChar', inv: 'panelInv', skill: 'panelSkill', shop: 
 const LEFT = ['char', 'skill', 'shop'];
 const isOpen = k => !$(PANELS[k]).classList.contains('hidden');
 function openPanel(k) {
-  if (LEFT.includes(k)) for (const o of LEFT) if (o !== k) closePanel(o);
+  if (TOUCH) { for (const o in PANELS) if (o !== k) closePanel(o); }
+  else if (LEFT.includes(k)) for (const o of LEFT) if (o !== k) closePanel(o);
   $(PANELS[k]).classList.remove('hidden');
   renderPanel(k);
 }
@@ -1500,9 +1511,9 @@ function refreshPanels() { for (const k in PANELS) if (isOpen(k)) renderPanel(k)
 // ---------- 提示框 ----------
 const tip = $('tooltip');
 function showTip(html) { tip.innerHTML = html; tip.classList.remove('hidden'); placeTip(); }
-function hideTip() { tip.classList.add('hidden'); }
+function hideTip() { tip.classList.add('hidden'); tip.classList.remove('sheet'); }
 function placeTip() {
-  if (tip.classList.contains('hidden')) return;
+  if (tip.classList.contains('hidden') || tip.classList.contains('sheet')) return;
   const r = tip.getBoundingClientRect();
   const mx = G.mouse.x * ZOOM, my = G.mouse.y * ZOOM;   // 提示框用螢幕座標
   let x = mx + 18, y = my + 18;
@@ -1529,8 +1540,31 @@ function compareHtml(it) {
   return h;
 }
 
+// 手機版的道具說明框：說明 + 可以做的動作
+function showItemSheet(it, where, key) {
+  const acts = [];
+  if (where === 'shop') acts.push(['購買', () => buyItem(key)]);
+  else if (where === 'inv') {
+    acts.push(G.shopOpen ? ['出售', () => sellItem(key)] : ['裝備', () => equipItem(key)]);
+    acts.push(['丟棄', () => dropItem(where, key)]);
+  } else { acts.push(['卸下', () => unequip(key)]); acts.push(['丟棄', () => dropItem(where, key)]); }
+  showSheet(itemHtml(it, null, where === 'shop' ? '購買價格' : null) + (where !== 'equip' ? compareHtml(it) : ''), acts);
+}
+// 說明框 + 按鈕；按鈕按下後執行動作並關閉
+function showSheet(html, acts) {
+  tip.innerHTML = html + '<div class="sheetBtns">' + acts.map((a, i) => `<button data-i="${i}">${a[0]}</button>`).join('') + '<button data-i="x">關閉</button></div>';
+  tip.classList.add('sheet'); tip.classList.remove('hidden');
+  tip.querySelectorAll('.sheetBtns button').forEach(b => {
+    b.onclick = ev => { ev.stopPropagation(); hideTip(); const a = acts[+b.dataset.i]; if (a && a[1]) a[1](); };
+  });
+}
+
 // ---------- 背包 ----------
 function bindItem(el, it, where, key) {
+  if (TOUCH) {
+    el.addEventListener('click', ev => { ev.preventDefault(); if (it) showItemSheet(it, where, key); });
+    return;
+  }
   el.addEventListener('mouseenter', () => {
     if (!it) return;
     showTip(itemHtml(it, null, where === 'shop' ? '購買價格' : null) + (where !== 'equip' ? compareHtml(it) : ''));
@@ -1555,7 +1589,12 @@ function slotEl(it) {
   if (it) {
     d.style.borderColor = RARITIES[it.rarity].color;
     d.style.boxShadow = it.rarity >= 2 ? `inset 0 0 12px ${RARITIES[it.rarity].color}66` : '';
-    d.innerHTML = `<img src="${itemIcon(it)}">`;
+    if (it.slot === 'weapon') {
+      // 武器：直接顯示素材圖，稀有度光暈畫在格子背景
+      const w = WEAPON_ICONS[it.wkey] || WEAPON_ICONS.rifle;
+      d.style.background = `radial-gradient(circle, ${RARITIES[it.rarity].color}44, rgba(0,0,0,0.5) 70%)`;
+      d.innerHTML = `<img class="pix wpn" src="${NA + w.file}"${w.crop ? ' style="object-fit:cover;object-position:left center"' : ''}>`;
+    } else d.innerHTML = `<img src="${itemIcon(it)}">`;
     if (it.req > P.level) d.classList.add('cant');
   }
   return d;
@@ -1707,22 +1746,33 @@ function renderSkills() {
       d.innerHTML = `<div class="sIcon" style="border-color:${tree.color};color:${tree.color}">${sk.icon}</div>
         <div class="sInfo"><div class="sName">${sk.name}</div><div class="sMeta">${sk.type === 'active' ? '主動' : '被動'} · 需 Lv${sk.req}</div></div>
         <div class="sLv">${base}<small>/${SKILL_MAX}</small></div>`;
-      d.addEventListener('mouseenter', () => showTip(skillHtml(id)));
-      d.addEventListener('mouseleave', hideTip);
-      d.addEventListener('click', () => {
-        if (!P.skillPts) { addLog('沒有技能點了。', '#aaa'); return; }
-        if (!ok) { addLog(`需要等級 ${sk.req}${sk.pre ? ` 並學會「${SKILLS[sk.pre].name}」` : ''}`, '#f88'); return; }
-        if (base >= SKILL_MAX) return;
-        P.skills[id] = base + 1; P.skillPts--;
-        if (sk.type === 'active' && !(P.skills[P.rightSkill] > 0)) P.rightSkill = id;
-        P.st = calcStats(P);
-        refreshPanels();
-        showTip(skillHtml(id));
-      });
+      if (TOUCH) {
+        // 手機：點一下先看說明，再決定要不要學
+        d.addEventListener('click', () => {
+          const can = P.skillPts && ok && base < SKILL_MAX;
+          showSheet(skillHtml(id), can ? [['學習（+1）', () => learnSkill(id)]] : []);
+        });
+      } else {
+        d.addEventListener('mouseenter', () => showTip(skillHtml(id)));
+        d.addEventListener('mouseleave', hideTip);
+        d.addEventListener('click', () => learnSkill(id));
+      }
       col.appendChild(d);
     }
     box.appendChild(col);
   }
+}
+// 投入一點技能點
+function learnSkill(id) {
+  const sk = SKILLS[id], base = P.skills[id] || 0, ok = skillReqOk(id);
+  if (!P.skillPts) { addLog('沒有技能點了。', '#aaa'); return; }
+  if (!ok) { addLog(`需要等級 ${sk.req}${sk.pre ? ` 並學會「${SKILLS[sk.pre].name}」` : ''}`, '#f88'); return; }
+  if (base >= SKILL_MAX) return;
+  P.skills[id] = base + 1; P.skillPts--;
+  if (sk.type === 'active' && !(P.skills[P.rightSkill] > 0)) P.rightSkill = id;
+  P.st = calcStats(P);
+  refreshPanels();
+  if (!TOUCH) showTip(skillHtml(id));
 }
 
 // ---------- 快捷列 / HUD ----------
@@ -1742,6 +1792,7 @@ function renderHotbar() {
 let _targetKey = '';
 function updateHUD() {
   const s = P.st;
+  if (TOUCH) TouchUI.hud();
   $('hpFill').style.height = (Math.max(0, P.hp) / s.maxHp * 100) + '%';
   $('mpFill').style.height = (P.mp / s.maxMp * 100) + '%';
   $('hpText').textContent = `${Math.ceil(Math.max(0, P.hp))}/${s.maxHp}`;
@@ -1791,6 +1842,7 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('mousedown', safe(e => {
   if (G.state !== 'play' || P.dead || G.paused) return;
   G.keys.shift = e.shiftKey;
+  G.mouse.x = e.clientX / ZOOM; G.mouse.y = e.clientY / ZOOM; computeHover();
   if (e.button === 0) {
     G.mouse.down = true;
     const h = G.hover;
@@ -1907,6 +1959,8 @@ function renderMenu() {
   $('saveInfo').textContent = G.testMode ? '（測試模式：不會存檔）' : G.lastSave ? `上次存檔：${fmtTime(G.lastSave)}` : '';
 }
 $('menuBtn').onclick = () => (isMenuOpen() ? closeMenu() : openMenu());
+$('btnFull').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else TouchUI.goFullscreen(); };
+if (!document.documentElement.requestFullscreen) $('btnFull').classList.add('hidden');
 $('menuClose').onclick = closeMenu;
 $('optMusic').oninput = e => { Snd.setVolume('music', e.target.value / 100); $('optMusicVal').textContent = e.target.value + '%'; };
 $('optSfx').oninput = e => { Snd.setVolume('sfx', e.target.value / 100); $('optSfxVal').textContent = e.target.value + '%'; };
@@ -1974,7 +2028,7 @@ async function startGame(p) {
   document.querySelectorAll('.ingame').forEach(e => e.classList.remove('hidden'));
   renderHotbar();
   addLog('歡迎來到青葉之原。', '#ffd98a');
-  addLog('左鍵移動/攻擊，右鍵施放技能，K 開技能樹。', '#ccc');
+  addLog(TOUCH ? '左下搖桿移動，按住「攻擊」自動攻擊，上方按鈕開技能樹。' : '左鍵移動/攻擊，右鍵施放技能，K 開技能樹。', '#ccc');
   saveGame();
 }
 $('btnNew').onclick = () => {
@@ -1982,6 +2036,7 @@ $('btnNew').onclick = () => {
   startGame(newPlayer());
 };
 $('btnLoad').onclick = () => { const p = loadGame(); if (p) startGame(p); };
+TouchUI.init();
 Snd.music('title');
 const fmtTime = t => new Date(t).toLocaleString('zh-TW', { hour12: false, month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 function refreshTitle() {
@@ -2052,6 +2107,13 @@ if (location.hash.startsWith('#play')) {
       for (const o of [{ gold: 50 }, { potion: 'hp' }, { item: genItem(5, 2) }]) { spawnGround(P.x, P.y, o); pickupItem(G.ground[G.ground.length - 1]); }
       Diag.add('資訊', `拾取測試完成：金幣 ${P.gold}、生命藥水 ${P.potions.hp}、背包第一格 ${P.inv[0] ? P.inv[0].name : '空'}、地上剩 ${G.ground.length} 個`);
       Diag.open(); return;
+    }
+    if (location.hash.includes('inv')) {   // 測試：背包與道具說明框
+      const wk = ['rifle', 'smg', 'shotgun', 'gatling', 'rail'];
+      for (let i = 0; i < 10; i++) P.inv[i] = i < 5 ? genItem(8, i % 4, 'weapon', wk[i]) : genItem(8, i % 4);
+      openPanel('inv');
+      if (location.hash.includes('sheet')) showItemSheet(P.inv[2], 'inv', 2);
+      return;
     }
     if (location.hash.includes('menu')) { openMenu(); return; }   // 測試：打開系統選單
     if (location.hash.includes('quit')) { openMenu(); $('btnQuit').click(); return; }   // 測試：離開遊戲回到標題

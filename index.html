@@ -2,7 +2,15 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1d2b14">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="神機紀元">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>神機紀元 · 青葉之原</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
@@ -117,6 +125,7 @@
   <div class="setRow"><label><input type="checkbox" id="optSfxOn"> 音效</label><input type="range" id="optSfx" min="0" max="100" step="5"><span class="setVal" id="optSfxVal"></span></div>
   <h3>畫質</h3>
   <div class="setRow" id="optQuality"><button data-q="0">高</button><button data-q="1">中</button><button data-q="2">低</button><span class="dim">畫面不順時調低</span></div>
+  <div class="setRow"><button id="btnFull">全螢幕 開 / 關</button></div>
   <h3>遊戲</h3>
   <div class="menuBtns"><button id="btnSave" class="big">儲存遊戲</button><button id="btnQuit" class="big">離開遊戲</button></div>
   <div class="hint" id="saveInfo"></div>
@@ -138,6 +147,11 @@
 <script src="js/data.js"></script>
 <script src="js/render.js"></script>
 <script src="js/gfx.js"></script>
+<script src="js/touch.js"></script>
 <script src="js/game.js"></script>
+<script>
+  // 安裝成 App（PWA）用：只在 http/https 下註冊
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
 </body>
 </html>

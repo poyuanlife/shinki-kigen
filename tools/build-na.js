@@ -25,6 +25,8 @@ const FILES = [
   'FX/Elemental/Explosion/SpriteSheet.png', 'FX/Elemental/Thunder/SpriteSheet.png', 'FX/Smoke/Smoke/SpriteSheet.png',
   // 物品
   'Items/Potion/LifePot.png', 'Items/Potion/WaterPot.png', 'Items/Treasure/GoldCoin.png',
+  // 武器圖示（背包、商店）
+  ...['Shuriken', 'Kunai', 'Caltrop', 'Dynamite'].map(n => `Items/Projectile/${n}.png`), 'FX/Projectile/BigShuriken.png',
   // 授權說明
   'LICENSE.txt', 'README.md',
 ];

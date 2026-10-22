@@ -292,6 +292,7 @@ function allFiles() {
   for (const f of Object.values(FX)) s.add(f.file);
   [T_FLOOR, T_WATER, T_NATURE, T_CAMP, 'FX/Projectile/Shuriken.png', 'FX/Projectile/Fireball.png', 'FX/Projectile/Kunai.png', 'FX/Projectile/EnergyBall.png',
     'Items/Potion/LifePot.png', 'Items/Potion/WaterPot.png', 'Items/Treasure/GoldCoin.png'].forEach(f => s.add(f));
+  for (const w of Object.values(WEAPON_ICONS)) s.add(w.file);
   return [...s];
 }
 function loadGameAssets() {

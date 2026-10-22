@@ -124,6 +124,8 @@ button.big:hover { filter: brightness(1.3); }
 .slot { width: 40px; height: 40px; border: 1px solid #3a3020; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; border-radius: 2px; }
 .slot:hover { background: rgba(80,70,50,0.4); }
 .slot img { width: 90%; height: 90%; image-rendering: auto; }
+.slot img.pix { image-rendering: pixelated; }
+.slot img.wpn { width: 70%; height: 70%; object-fit: contain; }
 .slot.cant::after { content: ''; position: absolute; inset: 0; background: rgba(200,0,0,0.25); }
 .slotLabel { color: #554a38; font-size: 12px; }
 .grid6 { display: grid; grid-template-columns: repeat(6, 48px); gap: 6px; }
@@ -180,3 +182,101 @@ button.big:hover { filter: brightness(1.3); }
 .menuBtns { display: flex; gap: 12px; justify-content: center; margin: 8px 0; }
 .menuBtns button.big { font-size: 15px; padding: 8px 22px; }
 #paused { position: fixed; top: 6%; left: 50%; transform: translateX(-50%); z-index: 44; color: #f3d48a; font-size: 20px; letter-spacing: 6px; text-shadow: 0 2px 6px #000; pointer-events: none; }
+
+/* =====================================================
+   手機版（html.touch，由 touch.js 偵測觸控裝置後加上）
+   ===================================================== */
+/* 整頁：不放大、不回彈；遊戲畫面與觸控按鈕完全禁止手勢，視窗內容可以上下滑 */
+html.touch, html.touch body { touch-action: manipulation; overscroll-behavior: none; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+html.touch canvas#game { touch-action: none; }
+html.touch .panel, html.touch #title, html.touch #tooltip.sheet { touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+html.touch #hotbar { display: none; }
+
+/* 左上：血量、魔力、經驗、藥水、功能按鈕 */
+html.touch #hud { top: calc(env(safe-area-inset-top) + 6px); bottom: auto; left: env(safe-area-inset-left); right: auto; height: auto;
+  background: none; padding: 0 8px; justify-content: flex-start; align-items: flex-start; gap: 6px; }
+html.touch .orbWrap { width: 56px; }
+html.touch #hud > .orbWrap:last-child { order: 1; }
+html.touch #hudCenter { order: 2; flex: none; margin: 0 0 0 4px; max-width: none; align-items: flex-start; gap: 5px; }
+html.touch .orb { width: 50px; height: 50px; border-width: 3px; }
+html.touch .orbText { font-size: 10px; }
+html.touch #expBar { width: 250px; height: 9px; }
+html.touch #expText { font-size: 8px; line-height: 8px; }
+html.touch .hudRow { gap: 6px; }
+html.touch .pot { width: 50px; height: 34px; font-size: 12px; }
+html.touch .hudBtns { gap: 5px; flex-wrap: wrap; max-width: 320px; }
+html.touch .hudBtns button { padding: 5px 9px; font-size: 12px; }
+
+/* 右上：小地圖 */
+html.touch #minimap { width: 150px; height: auto; top: calc(env(safe-area-inset-top) + 6px); right: calc(env(safe-area-inset-right) + 6px); }
+html.touch #zoneName { top: calc(env(safe-area-inset-top) + 88px); right: calc(env(safe-area-inset-right) + 8px); font-size: 11px; }
+html.touch #targetBar { top: calc(env(safe-area-inset-top) + 100px); min-width: 170px; padding: 3px 10px; }
+html.touch #targetName { font-size: 12px; }
+html.touch #targetInfo { font-size: 10px; }
+html.touch #log { top: calc(env(safe-area-inset-top) + 124px); bottom: auto; left: calc(env(safe-area-inset-left) + 8px); font-size: 11px; max-width: 45vw; }
+html.touch #buffs { bottom: auto; top: calc(env(safe-area-inset-top) + 74px); font-size: 11px; }
+
+/* 觸控按鈕 */
+#touchUI { position: fixed; inset: 0; z-index: 12; pointer-events: none; }
+#touchUI > * { pointer-events: auto; }
+#joyZone { position: fixed; left: calc(env(safe-area-inset-left) + 4px); bottom: calc(env(safe-area-inset-bottom) + 4px); width: 190px; height: 190px;
+  display: flex; align-items: center; justify-content: center; touch-action: none; }
+#joyBase { width: 124px; height: 124px; border-radius: 50%; background: rgba(0,0,0,0.28); border: 2px solid rgba(243,212,138,0.45);
+  display: flex; align-items: center; justify-content: center; }
+#joyKnob { width: 56px; height: 56px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, rgba(255,240,200,0.9), rgba(200,150,60,0.75));
+  box-shadow: 0 2px 8px rgba(0,0,0,0.6); pointer-events: none; }
+#tActions { position: fixed; right: calc(env(safe-area-inset-right) + 8px); bottom: calc(env(safe-area-inset-bottom) + 8px); width: 220px; height: 180px; pointer-events: none; }
+#tActions button { position: absolute; pointer-events: auto; touch-action: none; border-radius: 50%; color: #fff; font-family: inherit; overflow: hidden; }
+#tAtk { right: 0; bottom: 0; width: 86px; height: 86px; font-size: 17px; font-weight: bold; letter-spacing: 2px;
+  background: radial-gradient(circle at 40% 35%, #c0402c, #6a1408); border: 3px solid #f3d48a; box-shadow: 0 3px 10px rgba(0,0,0,0.6); }
+#tAtk.down { filter: brightness(1.35); transform: scale(0.95); }
+.tSk { width: 56px; height: 56px; background: radial-gradient(circle at 40% 35%, #3a3024, #120e0a); border: 2px solid #8a7040; padding: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.tSk:active { filter: brightness(1.4); }
+#tSk0 { right: 96px; bottom: 6px; } #tSk1 { right: 86px; bottom: 74px; } #tSk2 { right: 18px; bottom: 98px; } #tSk3 { right: 158px; bottom: 14px; }
+.tIcon { font-size: 22px; line-height: 22px; text-shadow: 0 0 6px currentColor; }
+.tName { font-size: 9px; color: #ddd; margin-top: 2px; white-space: nowrap; }
+.tCd { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: rgba(0,0,0,0.7); pointer-events: none; }
+.tSk.nomana .tIcon { filter: grayscale(1) brightness(0.6); }
+.tSk.empty { opacity: 0.35; }
+
+/* 視窗：手機上接近全螢幕 */
+html.touch .panel { left: calc(env(safe-area-inset-left) + 6px) !important; right: calc(env(safe-area-inset-right) + 6px) !important; top: 6px; bottom: 6px;
+  width: auto !important; max-width: 760px; margin: 0 auto; transform: none; z-index: 30; font-size: 13px; }
+html.touch .panel.menu { width: min(420px, 96vw) !important; left: 50% !important; right: auto !important; transform: translateX(-50%); bottom: auto; max-height: calc(100vh - 12px); z-index: 45; }
+html.touch .close { font-size: 30px; line-height: 24px; padding: 0 6px; }
+html.touch #equipGrid { grid-template-columns: repeat(3, 58px); grid-auto-rows: 58px; }
+html.touch #equipGrid .slot { width: 58px; height: 58px; }
+html.touch .hint { display: none; }
+
+/* 手機的道具 / 技能說明框（點一下出現，可以按按鈕） */
+#tooltip.sheet { pointer-events: auto; left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); max-width: min(360px, 94vw);
+  max-height: 88vh; overflow-y: auto; z-index: 200; font-size: 13px; }
+.sheetBtns { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
+.sheetBtns button { min-width: 72px; padding: 8px 12px; font-size: 14px; color: #f3d48a; background: linear-gradient(#4a3418, #241708); border: 1px solid #c79a46; border-radius: 4px; }
+
+/* 直向提示 */
+#rotateHint { position: fixed; inset: 0; z-index: 300; background: rgba(5,4,7,0.96); color: #e8cf94; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px; font-size: 18px; text-align: center; padding: 20px; }
+#rotateHint b { color: #ffd23f; }
+.rotIcon { font-size: 64px; animation: rot 2s ease-in-out infinite; }
+@keyframes rot { 50% { transform: rotate(90deg); } }
+
+/* 矮螢幕（手機橫向）的標題畫面 */
+@media (max-height: 520px) {
+  /* 標題畫面改成左右兩欄：左邊角色卡，右邊標題與按鈕 */
+  .titleBox { display: grid; grid-template-columns: auto 1fr; column-gap: 18px; align-items: center; max-width: 900px; }
+  .titleBox > * { grid-column: 2; }
+  .titleBox > .cards { grid-column: 1; grid-row: 1 / span 5; }
+  .logo { font-size: 36px; letter-spacing: 8px; }
+  .logoSub { font-size: 11px; }
+  .tagline { margin: 6px 0 10px; font-size: 13px; }
+  .card { width: 150px; min-height: 0; }
+  .card.locked { display: none; }
+  #portrait { width: 130px; height: 156px; }
+  .cardDesc { font-size: 11px; }
+  .btns { margin: 10px 0 8px; }
+  .help { font-size: 11px; line-height: 1.6; }
+  .titleBox { padding: 10px; }
+  .deathTitle { font-size: 36px; }
+}

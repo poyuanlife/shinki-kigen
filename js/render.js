@@ -81,6 +81,14 @@ function drawProp(c, x, y, p, t) {
 }
 
 // ---------- 物品圖示（產生 dataURL 快取） ----------
+// 武器類型 → 圖示（crop = 圖裡有兩格動畫，只顯示左邊那格，例如大型手裏劍）
+const WEAPON_ICONS = {
+  rifle: { file: 'Items/Projectile/Shuriken.png' },
+  smg: { file: 'Items/Projectile/Kunai.png' },
+  shotgun: { file: 'Items/Projectile/Caltrop.png' },
+  gatling: { file: 'Items/Projectile/Dynamite.png' },
+  rail: { file: 'FX/Projectile/BigShuriken.png', crop: true },
+};
 const _iconCache = {};
 function itemIcon(it) {
   const key = (it.slot === 'weapon' ? 'w_' + it.wkey : it.slot) + '_' + it.rarity;
@@ -95,22 +103,7 @@ function itemIcon(it) {
   c.translate(24, 24);
   c.lineJoin = 'round';
   switch (it.slot) {
-    case 'weapon': {
-      c.rotate(-0.75);
-      const len = { rifle: 19, smg: 14, shotgun: 18, gatling: 12, rail: 21 }[it.wkey] || 18;
-      if (it.wkey === 'gatling') {   // 連弩：橫放的弩
-        c.fillStyle = '#6b4a2a'; c.fillRect(-3, -16, 6, 32);
-        c.strokeStyle = '#4a3420'; c.lineWidth = 3; c.beginPath(); c.moveTo(-14, -8); c.quadraticCurveTo(0, -18, 14, -8); c.stroke();
-        c.strokeStyle = '#ddd'; c.lineWidth = 1; c.beginPath(); c.moveTo(-14, -8); c.lineTo(0, -2); c.lineTo(14, -8); c.stroke();
-      } else {                       // 弓：弧形弓身 + 弓弦
-        c.strokeStyle = it.wkey === 'rail' ? '#3a2a18' : '#7a5532'; c.lineWidth = it.wkey === 'rail' ? 4.5 : 3.5;
-        c.beginPath(); c.moveTo(-4, -len); c.quadraticCurveTo(12, 0, -4, len); c.stroke();
-        c.strokeStyle = '#ddd'; c.lineWidth = 1; c.beginPath(); c.moveTo(-4, -len); c.lineTo(-4, len); c.stroke();
-        if (it.wkey === 'shotgun') { c.strokeStyle = '#bbb'; for (const dy of [-4, 0, 4]) { c.beginPath(); c.moveTo(-10, dy); c.lineTo(10, dy); c.stroke(); } }
-      }
-      c.fillStyle = col; ell(c, 3, 0, 2.5, 2.5); c.fill();
-      break;
-    }
+    // 武器不在這裡畫：直接顯示素材圖（見 game.js 的 slotEl），因為用 file:// 開啟時畫布不能匯出外部圖片
     case 'helm': c.fillStyle = M; ell(c, 0, 2, 14, 13); c.fill(); c.fillStyle = col; rrect(c, -9, -2, 18, 6, 3); c.fill(); break;
     case 'armor': c.fillStyle = M; rrect(c, -13, -14, 26, 28, 7); c.fill(); c.fillStyle = D; ell(c, -14, -11, 7, 5); c.fill(); ell(c, 14, -11, 7, 5); c.fill(); c.fillStyle = col; c.fillRect(-7, -6, 14, 3); break;
     case 'gloves': c.fillStyle = M; rrect(c, -10, -8, 20, 20, 5); c.fill(); c.fillStyle = D; for (let i = 0; i < 4; i++) c.fillRect(-9 + i * 5, -14, 4, 8); c.fillStyle = col; c.fillRect(-10, 8, 20, 3); break;
