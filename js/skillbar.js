@@ -78,9 +78,10 @@ function openSkillPick(target, anchor) {
   pick = { target, box, hover: null };
   box.querySelector('.spClose').onclick = closeSkillPick;
   box.querySelectorAll('.spItem').forEach(b => {
-    b.onmouseenter = () => { pick.hover = b.dataset.id; if (b.dataset.id && b.dataset.id !== ATTACK) showTip(skillHtml(b.dataset.id)); };
-    b.onmouseleave = () => { pick.hover = null; hideTip(); };
-    b.onclick = () => { choose(b.dataset.id); };
+    // 清單可能已經關掉（例如剛選完），所以都要先檢查 pick
+    b.onmouseenter = () => { if (!pick) return; pick.hover = b.dataset.id; if (b.dataset.id && b.dataset.id !== ATTACK) showTip(skillHtml(b.dataset.id)); };
+    b.onmouseleave = () => { if (pick) pick.hover = null; hideTip(); };
+    b.onclick = () => { if (pick) choose(b.dataset.id); };
   });
   // 電腦版：靠近點的格子；手機版：畫面正中央（CSS）
   if (!TOUCH && anchor) {

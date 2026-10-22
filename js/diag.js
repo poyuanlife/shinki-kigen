@@ -35,6 +35,44 @@ const Diag = (() => {
     add('程式錯誤', r && r.message ? r.message : String(r), { stack: r && r.stack ? String(r.stack).slice(0, 1500) : '' });
   });
 
+  // 直接雙擊開啟（file://）時，瀏覽器只會回報「Script error.」，看不到細節。
+  // 所以把事件、按鈕、計時器的回呼都包一層 try/catch，自己記下完整的錯誤與位置。
+  let lastWrapErr = 0;
+  function caught(err, where) {
+    const now = performance.now();
+    if (now - lastWrapErr < 3000) return;   // 同一時間大量重複的錯誤只記一次
+    lastWrapErr = now;
+    add('程式錯誤', (err && err.message) || String(err), { where, stack: err && err.stack ? String(err.stack).slice(0, 1500) : '' });
+  }
+  const wrap = (fn, where) => {
+    if (typeof fn !== 'function' || fn.__dmWrapped) return fn;
+    const w = function (...a) { try { return fn.apply(this, a); } catch (err) { caught(err, where); } };
+    w.__dmWrapped = true;
+    return w;
+  };
+  // addEventListener：記住原本的函式，removeEventListener 才拿得掉
+  const wrappedMap = new WeakMap();
+  const addOrig = EventTarget.prototype.addEventListener, rmOrig = EventTarget.prototype.removeEventListener;
+  EventTarget.prototype.addEventListener = function (type, fn, opt) {
+    if (typeof fn !== 'function') return addOrig.call(this, type, fn, opt);
+    let w = wrappedMap.get(fn);
+    if (!w) { w = wrap(fn, '事件 ' + type); wrappedMap.set(fn, w); }
+    return addOrig.call(this, type, w, opt);
+  };
+  EventTarget.prototype.removeEventListener = function (type, fn, opt) {
+    return rmOrig.call(this, type, (typeof fn === 'function' && wrappedMap.get(fn)) || fn, opt);
+  };
+  // el.onclick = ... 之類的寫法
+  for (const ev of ['onclick', 'oninput', 'onchange', 'onmouseenter', 'onmouseleave', 'onpointerdown']) {
+    const d = Object.getOwnPropertyDescriptor(HTMLElement.prototype, ev);
+    if (!d || !d.set) continue;
+    Object.defineProperty(HTMLElement.prototype, ev, { configurable: true, enumerable: d.enumerable, get: d.get, set(fn) { d.set.call(this, wrap(fn, '按鈕 ' + ev.slice(2))); } });
+  }
+  // 計時器
+  const stOrig = window.setTimeout, siOrig = window.setInterval;
+  window.setTimeout = (fn, ms, ...a) => stOrig(wrap(fn, '計時器'), ms, ...a);
+  window.setInterval = (fn, ms, ...a) => siOrig(wrap(fn, '計時器'), ms, ...a);
+
   // 畫面停頓：requestAnimationFrame 兩次之間隔太久（分頁在背景時不算）
   let lastFrame = 0, hidden = document.visibilityState !== 'visible', muteUntil = 0;
   document.addEventListener('visibilitychange', () => { hidden = document.visibilityState !== 'visible'; lastFrame = 0; });

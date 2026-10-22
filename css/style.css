@@ -318,6 +318,7 @@ html.touch .spItem { padding: 10px; font-size: 15px; }
 #home { position: fixed; inset: 0; z-index: 55; cursor: pointer; overflow: hidden; background: #0d0a08; transition: opacity .45s; }
 #home.leaving { opacity: 0; pointer-events: none; }
 #homeBg { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }
+#homeVig { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, rgba(0,0,0,0.58) 20%, rgba(0,0,0,0.9) 80%); }
 .homeBox { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-58%); text-align: center; pointer-events: none; }
 .homeLogo { font-size: clamp(48px, 11vw, 120px); font-weight: 900; letter-spacing: 0.18em; color: #f3d48a;
   text-shadow: 0 0 24px rgba(255,170,60,0.7), 0 6px 0 #6b3b12, 0 10px 24px #000; animation: homeIn 1.2s ease-out; }

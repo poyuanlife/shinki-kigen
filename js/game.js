@@ -2184,7 +2184,7 @@ function frameBody(now) {
     G.uiT -= dt;
     if (G.uiT <= 0) { G.uiT = 0.05; updateHUD(); if (isOpen('char')) { G.charT = (G.charT || 0) - 1; if (G.charT <= 0) { G.charT = 10; renderChar(); } } }
   } else if (G.state === 'title') drawPortrait(now / 1000);
-  else if (G.state === 'home') Home.draw(now / 1000);
+  else if (G.state === 'home' && typeof Home !== 'undefined') Home.draw(now / 1000);
 }
 
 requestAnimationFrame(frame);
@@ -2197,6 +2197,51 @@ if (location.hash.startsWith('#play')) {
     const zm = location.hash.match(/zone-(\w+)/);
     if (zm) travelTo(zm[1]);
     if (location.hash.includes('travel')) { openPanel('travel'); return; }   // 測試：傳送面板
+    if (location.hash.includes('uitest')) {   // 介面測試：每個按鈕、格子都點一次、滑鼠移過一次
+      P.level = 13; for (const id in SKILLS) P.skills[id] = 2; P.skillPts = 5; P.statPts = 5; P.st = calcStats(P);
+      for (let i = 0; i < 12; i++) P.inv[i] = genItem(10, i % 4, i < 5 ? 'weapon' : null, ['rifle', 'smg', 'shotgun', 'gatling', 'rail'][i % 5]);
+      renderHotbar();
+      const n0 = Diag.reportText().split('程式錯誤').length;
+      const poke = sel => { for (const el of document.querySelectorAll(sel)) { if (el.closest('#btnQuit,#respawnBtn') || el.id === 'btnQuit') continue; for (const ev of ['mouseenter', 'mouseleave']) el.dispatchEvent(new MouseEvent(ev)); } };
+      const clickAll = sel => { for (const el of [...document.querySelectorAll(sel)]) { if (el.id === 'btnQuit' || el.closest('.zoneBtn')) continue; el.dispatchEvent(new MouseEvent('mouseenter')); el.click(); } };
+      poke('#hotbar .hk'); clickAll('#hotbar .hk');
+      for (const k of ['char', 'inv', 'skill', 'travel']) { openPanel(k); poke('#' + PANELS[k] + ' .slot, #' + PANELS[k] + ' .skill, #' + PANELS[k] + ' button'); clickAll('#' + PANELS[k] + ' .skill, #' + PANELS[k] + ' .plus'); closePanel(k); }
+      openPanel('inv'); clickAll('#invGrid .slot'); clickAll('#equipGrid .slot'); closePanel('inv');
+      openSkillPick('L', $('slotL')); poke('#skillPick .spItem'); clickAll('#skillPick .spItem');
+      openSkillPick('R', $('slotR')); pick.hover = 'scatter'; skillPickKey('3'); closeSkillPick();
+      openMenu(); clickAll('#optQuality button, #optDir button, #optHotkey button, #btnSave'); closeMenu();
+      const txt = Diag.reportText(), n1 = txt.split('程式錯誤').length;
+      console.log('UITEST 新增錯誤 ' + (n1 - n0));
+      for (const line of txt.split(String.fromCharCode(10)).filter(l => /程式錯誤|位置|at /.test(l)).slice(-12)) console.log('UITEST ' + line);
+      return;
+    }
+    if (location.hash.includes('stress')) {   // 壓力測試：連續跑很多幀，各種操作都做一遍，記下所有錯誤
+      const errs = {}; let frames = 0;
+      const tryDo = (name, fn) => { try { fn(); } catch (e) { const k = name + '：' + e.message; if (!errs[k]) errs[k] = (e.stack || '').split(String.fromCharCode(10)).slice(0, 4).join(' | '); } };
+      P.level = 13; for (const id in SKILLS) P.skills[id] = 3; P.statPts = 20; P.skillPts = 5; P.st = calcStats(P);
+      const acts = Object.keys(SKILLS).filter(id => SKILLS[id].type === 'active');
+      for (let f = 0; f < 4000; f++) {
+        frames++;
+        if (P.dead) tryDo('復活', respawn);
+        if (f % 600 === 1) tryDo('首領', () => { G.killsSinceBoss = 999; });
+        if (f % 400 === 5) tryDo('傳送', () => travelTo(f % 800 === 5 ? 'field' : 'bamboo'));
+        G.held.space = f % 200 < 150;
+        if (f % 37 === 0) tryDo('技能', () => { P.leftSkill = acts[(f / 37 | 0) % acts.length]; P.rightSkill = acts[(f / 37 + 3 | 0) % acts.length]; useSkill(P.rightSkill, TouchUI.aim(), false); });
+        if (f % 53 === 0) tryDo('快捷鍵', () => pressHotkey((f / 53 | 0) % 8));
+        if (f % 90 === 0) tryDo('藥水', () => { usePotion('hp'); usePotion('mp'); });
+        if (f % 120 === 0) tryDo('拾取', () => { for (const g of [...G.ground]) pickupItem(g); });
+        if (f % 250 === 0) tryDo('視窗', () => { for (const k of ['char', 'inv', 'skill', 'travel']) { openPanel(k); renderPanel(k); closePanel(k); } openSkillPick('L', $('slotL')); closeSkillPick(); openMenu(); renderMenu(); closeMenu(); });
+        if (f % 300 === 0) tryDo('裝備', () => { const i = P.inv.findIndex(x => x && x.req <= P.level); if (i >= 0) equipItem(i); });
+        if (f % 700 === 0) tryDo('回營', () => { P.cds.town = 0; returnToCamp(); });
+        if (f % 160 === 0) tryDo('走動', () => { P.x = clamp(P.x + rand(-6, 6), 4, MAP - 4); P.y = clamp(P.y + rand(-6, 6), 4, MAP - 4); if (!canStand(P.x, P.y, P.r)) { P.x = CAMP.x; P.y = CAMP.y + 2.2; } });
+        tryDo('更新', () => update(1 / 60));
+        tryDo('畫面', () => { render(); updateHUD(); });
+      }
+      G.held.space = false;
+      console.log('STRESS ' + frames + ' 幀，等級 ' + P.level + '，區域 ' + G.zone + '，錯誤 ' + Object.keys(errs).length + ' 種');
+      for (const k in errs) console.log('STRESSERR ' + k + ' @ ' + errs[k]);
+      return;
+    }
     if (location.hash.includes('leftcheck')) {   // 測試：左鍵設成爆裂符時不應出現普通攻擊
       P.level = 30; P.skills = { grenade: 5 }; P.leftSkill = 'grenade'; P.st = calcStats(P); P.mp = P.st.maxMp = 9999;
       P.x = 30.5; P.y = 30.5;
