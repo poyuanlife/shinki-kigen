@@ -1,0 +1,182 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #050407; color: #ddd;
+  font-family: "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", sans-serif; user-select: none; }
+canvas#game { position: fixed; inset: 0; display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.hidden { display: none !important; }
+.dim { color: #888; }
+button { font-family: inherit; cursor: pointer; }
+
+/* ---------- 標題 ---------- */
+#title { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 50;
+  background: radial-gradient(ellipse at 50% 30%, #2a1c14 0%, #0d0a0c 55%, #030203 100%); overflow: auto; }
+.titleBox { text-align: center; padding: 24px; max-width: 1000px; }
+.logo { font-size: 64px; font-weight: 900; letter-spacing: 14px; color: #f3d48a;
+  text-shadow: 0 0 18px rgba(255,170,60,0.6), 0 4px 0 #6b3b12; }
+.logoSub { letter-spacing: 12px; color: #b98c4a; margin-top: -4px; font-size: 14px; }
+.tagline { margin: 14px 0 22px; color: #aaa; }
+.cards { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.card { width: 200px; min-height: 330px; border: 2px solid #3a3020; background: linear-gradient(#1a1612, #0e0c0a);
+  border-radius: 6px; padding: 0 0 12px; position: relative; }
+.card.active { border-color: #d4a54a; box-shadow: 0 0 22px rgba(212,165,74,0.35); }
+.card.locked { opacity: 0.45; display: flex; flex-direction: column; justify-content: center; }
+.lockIcon { font-size: 70px; color: #555; }
+.cardFlag { color: #c62f36; font-weight: bold; letter-spacing: 4px; }
+.cardName { font-size: 22px; color: #f3d48a; font-weight: bold; }
+.cardDesc { font-size: 12.5px; color: #aaa; padding: 6px 12px 0; line-height: 1.5; }
+.btns { margin: 22px 0 16px; display: flex; gap: 12px; justify-content: center; }
+button.big { padding: 10px 28px; font-size: 17px; color: #f3d48a; background: linear-gradient(#4a3418, #241708);
+  border: 1px solid #c79a46; border-radius: 4px; }
+button.big:hover { filter: brightness(1.3); }
+.help { font-size: 13px; color: #aaa; line-height: 1.9; }
+
+/* ---------- 遊戲中 ---------- */
+#minimap { position: fixed; top: 10px; right: 10px; z-index: 5; border: 1px solid #4a3c28; background: rgba(0,0,0,0.45); border-radius: 4px; }
+#zoneName { position: fixed; top: 136px; right: 12px; color: #d9b36a; font-size: 13px; text-shadow: 0 1px 2px #000; z-index: 5; }
+#targetBar { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); text-align: center; z-index: 6;
+  background: rgba(0,0,0,0.65); padding: 6px 14px; border: 1px solid #5a2a20; border-radius: 4px; min-width: 260px; }
+#targetName { font-weight: bold; font-size: 15px; }
+.tbar { height: 10px; background: #300; margin: 4px 0; border: 1px solid #000; }
+#targetHp { height: 100%; background: linear-gradient(#e33, #811); }
+#targetInfo { font-size: 12px; color: #bbb; }
+#log { position: fixed; left: 14px; bottom: 150px; z-index: 5; font-size: 13.5px; pointer-events: none; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
+#log div { margin-top: 3px; transition: opacity 1s; }
+#log div.fade { opacity: 0; }
+#buffs { position: fixed; left: 50%; transform: translateX(-50%); bottom: 150px; z-index: 5; display: flex; gap: 8px; font-size: 13px; pointer-events: none; }
+#buffs span { background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 3px; }
+
+/* HUD */
+#hud { position: fixed; left: 0; right: 0; bottom: 0; height: 140px; display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 0 18px 10px; z-index: 10; pointer-events: none;
+  background: linear-gradient(to top, rgba(0,0,0,0.85), rgba(0,0,0,0)); }
+#hud > * { pointer-events: auto; }
+.orbWrap { position: relative; width: 118px; text-align: center; }
+.orb { width: 112px; height: 112px; border-radius: 50%; position: relative; overflow: hidden; margin: 0 auto;
+  border: 4px solid #6b5530; box-shadow: 0 0 0 2px #1c140a, 0 0 16px rgba(0,0,0,0.9), inset 0 0 20px #000; background: #120808; }
+#mpOrb { background: #070814; }
+.orb .fill { position: absolute; left: 0; right: 0; bottom: 0; transition: height 0.12s; }
+#hpFill { background: radial-gradient(circle at 40% 30%, #ff6060, #b01010 55%, #4a0000); }
+#mpFill { background: radial-gradient(circle at 40% 30%, #70a0ff, #1838c0 55%, #020a4a); }
+.orb .gloss { position: absolute; inset: 0; border-radius: 50%; background: radial-gradient(circle at 35% 25%, rgba(255,255,255,0.35), rgba(255,255,255,0) 40%); }
+#shieldRing { position: absolute; inset: 0; border-radius: 50%; box-shadow: inset 0 0 0 4px rgba(100,230,255,0.85), inset 0 0 18px rgba(100,230,255,0.6); opacity: 0; transition: opacity .2s; }
+.orbText { font-size: 13px; color: #eee; text-shadow: 0 1px 2px #000; margin-top: 2px; }
+#hudCenter { flex: 1; max-width: 640px; margin: 0 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+#expBar { width: 100%; height: 14px; background: #1a1408; border: 1px solid #5b4a28; position: relative; border-radius: 2px; }
+#expFill { height: 100%; background: linear-gradient(#f8d77a, #a07818); width: 0; transition: width .2s; }
+#expText { position: absolute; inset: 0; font-size: 11px; text-align: center; line-height: 13px; color: #fff; text-shadow: 0 1px 2px #000; }
+.hudRow { display: flex; align-items: center; gap: 10px; }
+#hotbar { display: flex; gap: 4px; }
+.hk { width: 50px; height: 50px; border: 2px solid #5b4a28; background: linear-gradient(#2a2420, #110e0c); position: relative; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; border-radius: 3px; overflow: hidden; }
+.hk:hover { border-color: #b8944a; }
+.hk.sel { border-color: #ffd23f; box-shadow: 0 0 10px rgba(255,210,63,0.6); }
+.hk.off { opacity: 0.3; }
+.hk.nomana .hkIcon { filter: grayscale(1) brightness(0.6); }
+.hk.nomana { background: linear-gradient(#202848, #0c1020); }
+.hkIcon { font-size: 26px; text-shadow: 0 0 6px currentColor; }
+.hkKey { position: absolute; left: 3px; top: 1px; font-size: 11px; color: #ccc; }
+.cdMask { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); height: 0; }
+.pot { position: relative; width: 52px; height: 50px; background: linear-gradient(#2a2420, #110e0c); border: 2px solid #5b4a28; border-radius: 3px; color: #fff; font-size: 13px; }
+.pot small { position: absolute; left: 3px; top: 1px; font-size: 10px; color: #aaa; }
+.flask { display: inline-block; width: 13px; height: 16px; border-radius: 40% 40% 50% 50%; vertical-align: middle; margin-right: 3px; border: 1px solid #ccc; }
+.flask.red { background: radial-gradient(circle at 40% 40%, #f77, #a00); }
+.flask.blue { background: radial-gradient(circle at 40% 40%, #79f, #12a); }
+.hudBtns { display: flex; gap: 8px; }
+.hudBtns button { position: relative; background: linear-gradient(#3a2c18, #1a1208); color: #e8cf94; border: 1px solid #6b5530; padding: 3px 12px; font-size: 13px; border-radius: 3px; }
+.hudBtns button:hover { filter: brightness(1.3); }
+.badge { position: absolute; top: -8px; right: -6px; background: #e33; color: #fff; border-radius: 50%; width: 16px; height: 16px; font-size: 12px; line-height: 15px; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { transform: scale(1.25); } }
+
+/* 面板 */
+.panel { position: fixed; top: 50px; bottom: 150px; width: 380px; z-index: 20; overflow-y: auto;
+  background: linear-gradient(#1b1611, #0d0a08); border: 2px solid #6b5530; border-radius: 6px; padding: 10px 14px;
+  box-shadow: 0 0 30px rgba(0,0,0,0.9); font-size: 13.5px; }
+.panel.left { left: 12px; }
+.panel.right { right: 12px; }
+.panel.wide { width: 640px; }
+.panel h2 { margin: 0 0 10px; font-size: 17px; color: #f3d48a; border-bottom: 1px solid #4a3c28; padding-bottom: 6px; }
+.panel h3 { color: #d9b36a; font-size: 14px; margin: 14px 0 6px; }
+.close { float: right; cursor: pointer; color: #aaa; font-size: 20px; line-height: 18px; }
+.close:hover { color: #fff; }
+.hint { font-size: 12px; color: #888; margin-top: 10px; line-height: 1.6; }
+
+/* 角色 */
+.charHead { display: flex; justify-content: space-between; align-items: center; }
+.cName { font-size: 20px; color: #f3d48a; font-weight: bold; }
+.cSub { color: #c62f36; font-size: 12px; }
+.cLv { font-size: 26px; color: #ffd23f; font-weight: bold; }
+.cExp { color: #aaa; font-size: 12px; margin: 6px 0; }
+.cPts { margin: 6px 0 8px; } .cPts b { color: #7f7; font-size: 16px; }
+.statRow { display: grid; grid-template-columns: 50px 80px 30px 1fr; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid #2a2218; }
+.sl { color: #e8cf94; } .sv { color: #fff; } .sv i { color: #5b9bff; font-style: normal; font-size: 12px; }
+.sd { font-size: 11px; color: #888; }
+.plus { width: 24px; height: 22px; background: #2d4a1a; color: #afa; border: 1px solid #5a8a3a; border-radius: 3px; }
+.plus:disabled { opacity: 0.25; cursor: default; }
+.cGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 14px; margin-top: 12px; }
+.cGrid div { display: flex; justify-content: space-between; border-bottom: 1px dotted #2f271c; padding: 2px 0; font-size: 12.5px; }
+.cGrid span { color: #b9a77e; } .cGrid b { color: #fff; font-weight: normal; }
+
+/* 背包 */
+#equipGrid { display: grid; grid-template-columns: repeat(3, 70px); grid-auto-rows: 70px; gap: 8px; justify-content: center;
+  grid-template-areas: "amulet helm ring1" "weapon armor gloves" "ring2 belt boots"; margin: 4px 0 8px; }
+#equipGrid .slot { width: 70px; height: 70px; }
+.goldRow { text-align: right; color: #ffd23f; margin: 4px 0; }
+#invGrid { display: grid; grid-template-columns: repeat(8, 40px); gap: 3px; justify-content: center; }
+.slot { width: 40px; height: 40px; border: 1px solid #3a3020; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; border-radius: 2px; }
+.slot:hover { background: rgba(80,70,50,0.4); }
+.slot img { width: 90%; height: 90%; image-rendering: auto; }
+.slot.cant::after { content: ''; position: absolute; inset: 0; background: rgba(200,0,0,0.25); }
+.slotLabel { color: #554a38; font-size: 12px; }
+.grid6 { display: grid; grid-template-columns: repeat(6, 48px); gap: 6px; }
+.grid6 .slot { width: 48px; height: 48px; }
+
+/* 技能 */
+#skillTrees { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.treeName { text-align: center; font-weight: bold; margin-bottom: 8px; font-size: 15px; letter-spacing: 2px; }
+.skill { display: flex; align-items: center; gap: 8px; padding: 8px 6px; margin-bottom: 10px; border: 1px solid #3a3020; border-radius: 4px;
+  background: rgba(0,0,0,0.35); cursor: pointer; }
+.skill:hover { background: rgba(80,70,50,0.35); }
+.skill.locked { opacity: 0.4; }
+.skill.learned { border-color: #8a7040; }
+.skill.can { box-shadow: 0 0 0 1px #6f6 inset; }
+.sIcon { width: 40px; height: 40px; border: 2px solid; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 22px; background: #0c0a08; flex: none; text-shadow: 0 0 6px currentColor; }
+.sInfo { flex: 1; min-width: 0; }
+.sName { color: #f3d48a; font-size: 14px; }
+.sMeta { color: #888; font-size: 11px; }
+.sLv { font-size: 18px; color: #fff; } .sLv small { color: #777; font-size: 11px; }
+
+/* 商店 */
+.shopRow { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-bottom: 1px solid #2a2218; font-size: 13px; }
+.shopRow .price { margin-left: auto; color: #ffd23f; }
+.shopRow button, .shopFoot button { background: #2a2014; color: #e8cf94; border: 1px solid #6b5530; border-radius: 3px; padding: 2px 8px; }
+.shopFoot { margin-top: 12px; color: #ffd23f; }
+
+/* 提示框 */
+#tooltip { position: fixed; z-index: 100; max-width: 330px; background: rgba(8,6,6,0.96); border: 1px solid #6b5530; padding: 8px 12px;
+  font-size: 13px; line-height: 1.55; pointer-events: none; text-align: center; box-shadow: 0 0 14px #000; }
+.tipHead { color: #888; font-size: 11px; letter-spacing: 2px; }
+.tipName { font-size: 15px; font-weight: bold; }
+.tipSub { color: #999; font-size: 12px; margin-bottom: 4px; }
+.aff { color: #7fa8ff; }
+.aff2 { color: #8a8a8a; }
+.tipPrice { color: #b8a060; font-size: 12px; margin-top: 4px; }
+.tipSep { border-top: 1px solid #3a3020; margin: 8px 0; }
+
+/* 死亡 */
+#death { position: fixed; inset: 0; z-index: 60; background: rgba(40,0,0,0.55); display: flex; align-items: center; justify-content: center; }
+.deathBox { text-align: center; }
+.deathTitle { font-size: 56px; color: #d22; font-weight: 900; letter-spacing: 10px; text-shadow: 0 0 20px #000; }
+#deathLoss { margin: 10px 0 20px; color: #ccc; }
+
+/* 系統選單 */
+.panel.menu { left: 50%; transform: translateX(-50%); top: 12%; bottom: auto; width: 380px; z-index: 45; }
+.setRow { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.setRow label { width: 70px; color: #e8cf94; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.setRow input[type=range] { flex: 1; accent-color: #d9a441; cursor: pointer; }
+.setRow input[type=checkbox] { accent-color: #d9a441; cursor: pointer; }
+.setVal { width: 42px; text-align: right; color: #ccc; font-variant-numeric: tabular-nums; }
+.setRow button { background: #2a2014; color: #e8cf94; border: 1px solid #6b5530; border-radius: 3px; padding: 3px 16px; }
+.setRow button.on { background: #6b5530; color: #fff; border-color: #d9a441; }
+.setRow .dim { color: #888; font-size: 12px; }
+.menuBtns { display: flex; gap: 12px; justify-content: center; margin: 8px 0; }
+.menuBtns button.big { font-size: 15px; padding: 8px 22px; }
+#paused { position: fixed; top: 6%; left: 50%; transform: translateX(-50%); z-index: 44; color: #f3d48a; font-size: 20px; letter-spacing: 6px; text-shadow: 0 2px 6px #000; pointer-events: none; }

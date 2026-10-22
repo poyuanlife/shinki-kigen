@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>神機紀元 · 青葉之原</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<!-- 標題畫面 -->
+<div id="title">
+  <div class="titleBox">
+    <div class="logo">神機紀元</div>
+    <div class="logoSub">DEUS · MACHINA</div>
+    <div class="tagline">和風忍者打寶動作 RPG（青葉之原測試版）</div>
+    <div class="cards">
+      <div class="card active">
+        <canvas id="portrait" width="200" height="240"></canvas>
+        <div class="cardFlag">綠忍</div>
+        <div class="cardName">忍者</div>
+        <div class="cardDesc">來去無影的暗器高手。以投擲術、體術與忍法，在遠處殲滅妖怪。</div>
+      </div>
+      <div class="card locked"><div class="lockIcon">?</div><div class="cardFlag">？？？</div><div class="cardName">尚未開放</div></div>
+      <div class="card locked"><div class="lockIcon">?</div><div class="cardFlag">？？？</div><div class="cardName">尚未開放</div></div>
+      <div class="card locked"><div class="lockIcon">?</div><div class="cardFlag">？？？</div><div class="cardName">尚未開放</div></div>
+    </div>
+    <div class="btns">
+      <button id="btnLoad" class="big hidden">繼續遊戲</button>
+      <button id="btnNew" class="big">建立新角色</button>
+    </div>
+    <div class="help">
+      <b>操作</b>　左鍵：移動 / 攻擊 / 拾取　｜　Shift+左鍵：原地投擲　｜　右鍵：施放選定技能　｜　1–8：快捷技能<br>
+      Q：生命藥水　W/E：魔力藥水　｜　C：角色　I：背包　K：技能樹　T：回營地　Tab：小地圖　N：音樂開關　V：音效開關　Esc：系統選單 / 關閉視窗<br>
+      <span class="dim">美術與音樂：<a href="https://pixel-boy.itch.io/ninja-adventure-asset-pack" target="_blank" rel="noopener" style="color:inherit">Ninja Adventure</a>（Pixel-boy &amp; AAA，CC0）</span><br>
+      <span class="dim">F2：診斷報告　F3：顯示 FPS　F4：切換畫質　｜　測試鍵：F9 立即升級　F10 掉落史詩＋傳奇裝備　F8 召喚首領</span>
+    </div>
+  </div>
+</div>
+
+<!-- 遊戲中介面 -->
+<canvas id="minimap" class="ingame hidden" width="230" height="122"></canvas>
+<div id="zoneName" class="ingame hidden">青葉之原</div>
+<div id="targetBar" class="hidden">
+  <div id="targetName"></div>
+  <div class="tbar"><div id="targetHp"></div></div>
+  <div id="targetInfo"></div>
+</div>
+<div id="log" class="ingame hidden"></div>
+<div id="buffs" class="ingame hidden"></div>
+
+<div id="hud" class="ingame hidden">
+  <div class="orbWrap">
+    <div class="orb" id="hpOrb"><div class="fill" id="hpFill"></div><div class="gloss"></div><div id="shieldRing"></div></div>
+    <div class="orbText" id="hpText"></div>
+  </div>
+  <div id="hudCenter">
+    <div id="expBar"><div id="expFill"></div><span id="expText"></span></div>
+    <div class="hudRow">
+      <button class="pot" id="potHpBtn" title="生命藥水 (Q)"><span class="flask red"></span><span id="potHp">0</span><small>Q</small></button>
+      <div id="hotbar"></div>
+      <button class="pot" id="potMpBtn" title="魔力藥水 (W)"><span class="flask blue"></span><span id="potMp">0</span><small>W</small></button>
+    </div>
+    <div class="hudBtns">
+      <button data-open="char">角色 (C)<span id="ptsBadge" class="badge hidden">+</span></button>
+      <button data-open="inv">背包 (I)</button>
+      <button data-open="skill">技能 (K)<span id="skBadge" class="badge hidden">+</span></button>
+      <button id="menuBtn">選單 (Esc)</button>
+    </div>
+  </div>
+  <div class="orbWrap">
+    <div class="orb" id="mpOrb"><div class="fill" id="mpFill"></div><div class="gloss"></div></div>
+    <div class="orbText" id="mpText"></div>
+  </div>
+</div>
+
+<!-- 角色 -->
+<div id="panelChar" class="panel left hidden">
+  <h2>角色資訊<span class="close" data-close="char">×</span></h2>
+  <div id="charBody"></div>
+</div>
+
+<!-- 技能 -->
+<div id="panelSkill" class="panel left wide hidden">
+  <h2>技能樹 · 剩餘技能點 <b id="skillPts">0</b><span class="close" data-close="skill">×</span></h2>
+  <div id="skillTrees"></div>
+  <div class="hint">點擊技能投入技能點。主動技能可在下方快捷列點選設為「右鍵技能」，或用數字鍵 1–8 直接施放。</div>
+</div>
+
+<!-- 商店 -->
+<div id="panelShop" class="panel left hidden">
+  <h2>行商 源藏<span class="close" data-close="shop">×</span></h2>
+  <div class="shopRow"><span class="flask red"></span>生命藥水（回復 45% 生命）<span class="price"><b id="pHp"></b> 金</span><button id="buyHp1">買 1</button><button id="buyHp5">買 5</button></div>
+  <div class="shopRow"><span class="flask blue"></span>魔力藥水（回復 50% 魔力）<span class="price"><b id="pMp"></b> 金</span><button id="buyMp1">買 1</button><button id="buyMp5">買 5</button></div>
+  <h3>商品</h3>
+  <div id="shopStock" class="grid6"></div>
+  <div class="shopFoot">持有金幣：<b id="shopGold"></b>　<button id="sellCommon">出售所有普通物品</button></div>
+  <div class="hint">商店開啟時，點擊背包中的物品即可出售。</div>
+</div>
+
+<!-- 背包 -->
+<div id="panelInv" class="panel right hidden">
+  <h2>裝備與背包<span class="close" data-close="inv">×</span></h2>
+  <div id="equipGrid"></div>
+  <div class="goldRow">金幣：<b id="goldText">0</b></div>
+  <div id="invGrid"></div>
+  <div class="hint">點擊：裝備 / 卸下　｜　Shift+點擊：丟棄<br>稀有度：<span style="color:#e2e2e2">普通</span> → <span style="color:#5b9bff">精良</span> → <span style="color:#ffbf3a">傳奇</span> → <span style="color:#c867ff">史詩</span></div>
+</div>
+
+<div id="paused" class="hidden">暫 停 中</div>
+<!-- 系統選單 -->
+<div id="panelMenu" class="panel menu hidden">
+  <h2>系統選單<span class="close" id="menuClose">×</span></h2>
+  <h3>音量</h3>
+  <div class="setRow"><label><input type="checkbox" id="optMusicOn"> 音樂</label><input type="range" id="optMusic" min="0" max="100" step="5"><span class="setVal" id="optMusicVal"></span></div>
+  <div class="setRow"><label><input type="checkbox" id="optSfxOn"> 音效</label><input type="range" id="optSfx" min="0" max="100" step="5"><span class="setVal" id="optSfxVal"></span></div>
+  <h3>畫質</h3>
+  <div class="setRow" id="optQuality"><button data-q="0">高</button><button data-q="1">中</button><button data-q="2">低</button><span class="dim">畫面不順時調低</span></div>
+  <h3>遊戲</h3>
+  <div class="menuBtns"><button id="btnSave" class="big">儲存遊戲</button><button id="btnQuit" class="big">離開遊戲</button></div>
+  <div class="hint" id="saveInfo"></div>
+  <div class="hint">選單開著時遊戲會暫停。遊戲每 30 秒自動存檔，離開遊戲時也會自動存檔。<br>快速鍵：Esc 開關選單　N 音樂開關　V 音效開關　F4 畫質</div>
+</div>
+
+<div id="tooltip" class="hidden"></div>
+
+<div id="death" class="hidden">
+  <div class="deathBox">
+    <div class="deathTitle">你已陣亡</div>
+    <div id="deathLoss"></div>
+    <button id="respawnBtn" class="big">在營地復活</button>
+  </div>
+</div>
+
+<script src="js/diag.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/data.js"></script>
+<script src="js/render.js"></script>
+<script src="js/gfx.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+# 系統與編輯器暫存檔
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.log
+.vscode/
+node_modules/
