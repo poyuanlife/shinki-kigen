@@ -26,6 +26,23 @@ const snap = v => Math.round(v * DZ) / DZ;
 
 // ---------- 方向 ----------
 // 素材每一欄的方向：0 下、1 上、2 左、3 右
+// 斜向時要用哪張圖：auto 依角度最接近（有緩衝）、side 偏用側面、front 偏用正面 / 背面
+let DIR_MODE = (() => { try { return localStorage.getItem('dm_dirmode') || 'auto'; } catch (e) { return 'auto'; } })();
+function setDirMode(m) { DIR_MODE = m; try { localStorage.setItem('dm_dirmode', m); } catch (e) { /* 忽略 */ } }
+const DIR_CENTER = [Math.PI / 2, -Math.PI / 2, Math.PI, 0];   // 下、上、左、右 的螢幕角度
+function pickDir(o, a) {
+  if (DIR_MODE === 'side') { const c = Math.cos(a), s = Math.sin(a); return Math.abs(c) >= Math.abs(s) - 0.02 ? (c >= 0 ? 3 : 2) : (s >= 0 ? 0 : 1); }
+  if (DIR_MODE === 'front') { const c = Math.cos(a), s = Math.sin(a); return Math.abs(s) >= Math.abs(c) - 0.02 ? (s >= 0 ? 0 : 1) : (c >= 0 ? 3 : 2); }
+  const d = dir4(a);
+  if (o && o._dir !== undefined && o._dir !== d) {
+    // 還在原本方向的 45°+12° 範圍內就不換，避免在斜角附近一直切換
+    let diff = Math.abs(a - DIR_CENTER[o._dir]) % (Math.PI * 2);
+    if (diff > Math.PI) diff = Math.PI * 2 - diff;
+    if (diff < Math.PI / 4 + 0.21) return o._dir;
+  }
+  if (o) o._dir = d;
+  return d;
+}
 function dir4(a) {
   const c = Math.cos(a), s = Math.sin(a);
   if (Math.abs(c) >= Math.abs(s)) return c >= 0 ? 3 : 2;
@@ -98,7 +115,7 @@ function heroAnim(p) {
 }
 function drawHero(c, x, y, p, scale = HERO_SCALE, dirOverride) {
   const [act, t] = heroAnim(p);
-  const dir = dirOverride !== undefined ? dirOverride : dir4(p.face);
+  const dir = dirOverride !== undefined ? dirOverride : pickDir(p, screenAngle(p.face));
   if (!p.dead) { c.fillStyle = 'rgba(0,0,0,0.3)'; ell(c, x, y - scale, 6 * scale, 2.5 * scale); c.fill(); }
   if (p.buffs && p.buffs.stim > 0) { c.fillStyle = 'rgba(255,60,60,0.16)'; ell(c, x, y - 8 * scale, 11 * scale, 12 * scale); c.fill(); }
   drawSpec(c, 'hero', act, dir, t, x, y, scale, p.hurt > 0 ? 0.6 : 0);
@@ -132,7 +149,7 @@ function drawEnemySprite(c, x, y, e) {
   const [act, t] = enemyAnim(e);
   // 會飛的怪物（蝙蝠、鬼火）上下飄
   const fly = e.def.fly ? Math.sin(G.t * 4 + e.anim) * 3 - 6 : 0;
-  drawSpec(c, e.def.spr, act, dir4(e.face), t, x, y + fly, sc, e.hitFlash > 0 ? 0.8 : 0);
+  drawSpec(c, e.def.spr, act, pickDir(e, screenAngle(e.face)), t, x, y + fly, sc, e.hitFlash > 0 ? 0.8 : 0);
 }
 
 // 屍體：閃白後淡出，搭配煙霧特效
@@ -162,7 +179,7 @@ function drawFx(c, name, t, x, y, scale = PX) {
 // ---------- 飛行道具 ----------
 // kind：shuriken 手裏劍（旋轉）、fire 火球、kunai 苦無、energy 能量球
 function drawProjectile(c, b, kind) {
-  const s = toScreen(b.x, b.y), z = 12, ang = Math.atan2(b.vy, b.vx);
+  const s = toScreen(b.x, b.y), z = 12, ang = screenAngle(Math.atan2(b.vy, b.vx));
   c.save();
   if (kind === 'shuriken' || !kind) {
     const im = img('FX/Projectile/Shuriken.png');
@@ -228,16 +245,28 @@ const ART = {
   stones: [[T_NATURE, 15, 9], [T_NATURE, 18, 9]],
   fence: [[T_NATURE, 1, 10, 1, 1], [T_NATURE, 2, 10, 1, 1], [T_NATURE, 6, 10, 1, 1]],   // 營地圍籬
 };
+// 45 度：把正方形圖塊畫成菱形。(X, Y) = 菱形頂點（邏輯座標）
+// 變形矩陣把圖塊的橫軸對到螢幕右下、縱軸對到螢幕左下，2:1 等角
+function isoCell(c, sheet, col, row, X, Y) {
+  const im = img(sheet);
+  if (!ready(im)) return false;
+  c.save();
+  c.translate(X, Y);
+  c.transform(2, 1, -2, 1, 0, 0);   // 1 素材像素 → 右下 (2, 1)、左下 (-2, 1)
+  c.drawImage(im, col * TILE_PX, row * TILE_PX, TILE_PX, TILE_PX, -0.06, -0.06, 16.12, 16.12);   // 稍微放大，避免接縫
+  c.restore();
+  return true;
+}
 function drawAuto(c, set, mask, x, y, seed) {
   const s = ART[set];
   if (mask === 15) {   // 中間：大多是素色，偶爾換成有點綴的變化
-    if (s.fill && seed > 0.82) { const f = s.fill[Math.floor(seed * 13) % s.fill.length]; return drawCell(c, s.sheet, f[0], f[1], x, y); }
-    return drawCell(c, s.sheet, s.col + 1, s.row + 1, x, y);
+    if (s.fill && seed > 0.82) { const f = s.fill[Math.floor(seed * 13) % s.fill.length]; return isoCell(c, s.sheet, f[0], f[1], x, y); }
+    return isoCell(c, s.sheet, s.col + 1, s.row + 1, x, y);
   }
   const [dc, dr] = mask === 0 ? [1, 1] : AUTO[mask];   // 單格：用中間那格，比較自然
-  return drawCell(c, s.sheet, s.col + dc, s.row + dr, x, y);
+  return isoCell(c, s.sheet, s.col + dc, s.row + dr, x, y);
 }
-function drawGrass(c, x, y, seed) { const g = ART.grass[Math.floor(seed * ART.grass.length)]; return drawCell(c, T_FLOOR, g[0], g[1], x, y); }
+function drawGrass(c, x, y, seed) { const g = ART.grass[Math.floor(seed * ART.grass.length)]; return isoCell(c, T_FLOOR, g[0], g[1], x, y); }
 
 // 地面裝飾：回傳 [圖, 欄, 列]
 function decoTile(kind, seed) { const L = kind === 'plant' ? ART.plants : ART.stones; return L[Math.floor(seed * L.length) % L.length]; }

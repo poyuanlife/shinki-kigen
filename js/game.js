@@ -3,8 +3,8 @@
 //  主程式（地圖、戰鬥、技能、掉寶、介面）
 // =====================================================
 
-// 俯視方格地圖：每格 = 邏輯 32 像素（TW/2）。保留 TW/TH 名稱，讓 r * TW / 2 = 半徑像素
-const TW = 64, TH = 64, MAP = 100;
+// 45 度等角地圖：每格是寬 64、高 32 的菱形（邏輯像素）
+const TW = 64, TH = 32, MAP = 100;
 const CAMP = { x: 50.5, y: 50.5, r: 8.5 };
 const SAVE_KEY = 'deusmachina_save_v3';   // v3：和風忍者（v1 科技戰士、v2 奇幻遊俠，不相容）
 const $ = id => document.getElementById(id);
@@ -212,10 +212,20 @@ function genMap() {
 // =====================================================
 //  座標、碰撞、尋路
 // =====================================================
-function toScreen(x, y) { return { x: x * TW / 2 - G.cam.x + W / 2, y: y * TH / 2 - G.cam.y + H / 2 }; }
-function toWorld(px, py) { return { x: (px - W / 2 + G.cam.x) / (TW / 2), y: (py - H / 2 + G.cam.y) / (TH / 2) }; }
+// 世界座標 (x, y) ↔ 畫面座標。iso(x, y) = 不含鏡頭的投影座標
+const isoX = (x, y) => (x - y) * TW / 2, isoY = (x, y) => (x + y) * TH / 2;
+function toScreen(x, y) { return { x: isoX(x, y) - G.cam.x + W / 2, y: isoY(x, y) - G.cam.y + H / 2 }; }
+function toWorld(px, py) {
+  const a = (px - W / 2 + G.cam.x) / (TW / 2), b = (py - H / 2 + G.cam.y) / (TH / 2);
+  return { x: (a + b) / 2, y: (b - a) / 2 };
+}
+// 鏡頭對準主角
+function camTo(shake = 0) { G.cam.x = isoX(P.x, P.y) + rand(-1, 1) * shake; G.cam.y = isoY(P.x, P.y) - 12 + rand(-1, 1) * shake; }
 const mouseWorld = () => toWorld(G.mouse.x, G.mouse.y);
-const screenAngle = a => a;   // 俯視：世界方向 = 螢幕方向
+// 世界方向 → 螢幕上的角度
+function screenAngle(a) { const c = Math.cos(a), s = Math.sin(a); return Math.atan2((c + s) / 2, c - s); }
+// 螢幕方向 (sx, sy) → 世界方向（單位向量）
+function screenToWorldDir(sx, sy) { const a = sx / (TW / 2), b = sy / (TH / 2), x = (a + b) / 2, y = (b - a) / 2, d = Math.hypot(x, y) || 1; return [x / d, y / d]; }
 
 function canStand(x, y, r) {
   return !blocked(Math.floor(x - r), Math.floor(y - r)) && !blocked(Math.floor(x + r), Math.floor(y - r)) &&
@@ -634,7 +644,7 @@ function killEnemy(e) {
   dropLoot(e);
   burst(e.x, e.y, e.type === 'boss' ? 80 : 12, e.def.blood, { sp: 3, z: 20 });
   if (e.type === 'boss') burst(e.x, e.y, 30, '#ffcc55', { sp: 4, z: 20 });
-  G.corpses.push({ x: e.x, y: e.y, spr: e.def.spr, scale: enemyScale(e), dir: dir4(e.face), t: 0, life: 0.6, big: e.type === 'boss' || e.type === 'brute' });
+  G.corpses.push({ x: e.x, y: e.y, spr: e.def.spr, scale: enemyScale(e), dir: pickDir(e, screenAngle(e.face)), t: 0, life: 0.6, big: e.type === 'boss' || e.type === 'brute' });
   if (G.corpses.length > 40) G.corpses.shift();
   G.decals.push({ x: e.x, y: e.y, r: e.type === 'boss' ? 1.6 : 0.6, color: e.def.blood, t: 0, life: 25 });
   G.killsSinceBoss++;
@@ -958,8 +968,9 @@ function updatePlayer(dt) {
   if (joy.on && joy.mag > 0.15) {
     p.path = []; p.goal = null; p.target = null;
     const step = s.moveSpeed * dt * Math.min(1, joy.mag * 1.25);
-    moveBy(p, joy.x * step, joy.y * step);
-    if (!(p.buffs.gatling > 0) && !(p.act && p.act.n === 'shoot')) p.face = Math.atan2(joy.y, joy.x);
+    const [jx, jy] = screenToWorldDir(joy.x, joy.y);
+    moveBy(p, jx * step, jy * step);
+    if (!(p.buffs.gatling > 0) && !(p.act && p.act.n === 'shoot')) p.face = Math.atan2(jy, jx);
     p.moving = Math.min(1, p.moving + dt * 8);
     p.walk += dt * 11 * (s.moveSpeed / 4);
     p.runT += dt * (s.moveSpeed / 4);
@@ -1005,8 +1016,7 @@ function update(dt) {
   updateSpawner(dt);
   for (const g of G.ground) g.t += dt;
   G.shake = Math.max(0, G.shake - dt * 30);
-  G.cam.x = P.x * TW / 2 + rand(-1, 1) * G.shake;
-  G.cam.y = P.y * TH / 2 - 12 + rand(-1, 1) * G.shake;
+  camTo(G.shake);
   computeHover();
   G.saveT += dt;
   if (G.saveT > 30) { G.saveT = 0; saveGame(); }
@@ -1026,7 +1036,7 @@ function computeHover() {
     let best = null, bd = -1e9;
     for (const e of G.enemies) {
       const s = toScreen(e.x, e.y);
-      if (Math.abs(mx - s.x) < enemyW(e) + 4 && my < s.y + 8 && my > s.y - enemyH(e) - 4 && e.y > bd) { bd = e.y; best = e; }
+      if (Math.abs(mx - s.x) < enemyW(e) + 4 && my < s.y + 8 && my > s.y - enemyH(e) - 4 && e.x + e.y > bd) { bd = e.x + e.y; best = e; }
     }
     if (best) h = { kind: 'enemy', ref: best };
   }
@@ -1074,27 +1084,39 @@ function invalidateGround() { gbuf.valid = false; }
 
 // 在 c 上（已設好座標轉換）畫出投影座標矩形 (rx, ry, rw, rh) 內的地板；回傳圖是否都載完
 // 在 c 上（已設好座標轉換）畫出 (rx, ry, rw, rh) 範圍內的地板；回傳圖是否都載完
+// 在 c 上（已設好座標轉換，單位 = 投影座標）畫出 (rx, ry, rw, rh) 範圍內的地板；回傳圖是否都載完
 function paintGround(c, rx, ry, rw, rh) {
   c.save();
   c.imageSmoothingEnabled = false;
   c.beginPath(); c.rect(rx, ry, rw, rh); c.clip();
-  const T = TW / 2;
-  const x0 = Math.max(0, Math.floor(rx / T) - 1), x1 = Math.min(MAP - 1, Math.ceil((rx + rw) / T) + 1);
-  const y0 = Math.max(0, Math.floor(ry / T) - 1), y1 = Math.min(MAP - 1, Math.ceil((ry + rh) / T) + 1);
+  // 範圍四角換回世界座標，找出要畫的格子
+  const inv = (X, Y) => { const a = X / (TW / 2), b = Y / (TH / 2); return [(a + b) / 2, (b - a) / 2]; };
+  const cs = [inv(rx - TW, ry - TH * 3), inv(rx + rw + TW, ry - TH * 3), inv(rx - TW, ry + rh + TH), inv(rx + rw + TW, ry + rh + TH)];
+  const x0 = Math.max(0, Math.floor(Math.min(...cs.map(p => p[0])))), x1 = Math.min(MAP - 1, Math.ceil(Math.max(...cs.map(p => p[0]))));
+  const y0 = Math.max(0, Math.floor(Math.min(...cs.map(p => p[1])))), y1 = Math.min(MAP - 1, Math.ceil(Math.max(...cs.map(p => p[1]))));
   const inMap = (x, y) => x >= 0 && y >= 0 && x < MAP && y < MAP;
   const isDirt = (x, y) => inMap(x, y) && M.floor[idx(x, y)] !== 0 && M.tile[idx(x, y)] !== 2;
   const isWater = (x, y) => inMap(x, y) && M.tile[idx(x, y)] === 2;
   const mask = (f, x, y) => (f(x, y - 1) ? 1 : 0) | (f(x + 1, y) ? 2 : 0) | (f(x, y + 1) ? 4 : 0) | (f(x - 1, y) ? 8 : 0);
+  const near = (X, Y, up) => X > rx - TW && X < rx + rw + TW && Y > ry - up && Y < ry + rh + TH;
   let ok = true;
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
-    const i = idx(x, y), px = x * T, py = y * T, sd = M.seed[i];
-    ok = drawGrass(c, px, py, sd) && ok;
-    if (M.tile[i] === 2) ok = drawAuto(c, 'water', mask(isWater, x, y), px, py, sd) && ok;
-    else if (isDirt(x, y)) ok = drawAuto(c, 'dirt', mask(isDirt, x, y), px, py, sd) && ok;
+  // 依 x + y 由後往前畫
+  for (let sum = x0 + y0; sum <= x1 + y1; sum++) for (let x = x0; x <= x1; x++) {
+    const y = sum - x;
+    if (y < y0 || y > y1) continue;
+    const i = idx(x, y), X = isoX(x, y), Y = isoY(x, y), sd = M.seed[i];
+    if (!near(X, Y, TH)) continue;
+    ok = drawGrass(c, X, Y, sd) && ok;
+    if (M.tile[i] === 2) ok = drawAuto(c, 'water', mask(isWater, x, y), X, Y, sd) && ok;
+    else if (isDirt(x, y)) ok = drawAuto(c, 'dirt', mask(isDirt, x, y), X, Y, sd) && ok;
   }
-  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+  for (let sum = x0 + y0; sum <= x1 + y1; sum++) for (let x = x0; x <= x1; x++) {
+    const y = sum - x;
+    if (y < y0 || y > y1) continue;
     const i = idx(x, y);
-    if (M.deco[i] && M.tile[i] === 0) drawDeco(c, x, y, x * T + T / 2, y * T + T / 2, M.deco[i]);
+    if (!M.deco[i] || M.tile[i] !== 0) continue;
+    const X = isoX(x + 0.5, y + 0.5), Y = isoY(x + 0.5, y + 0.5);
+    if (near(X, Y, 50)) drawDeco(c, x, y, X, Y, M.deco[i]);
   }
   c.restore();
   return ok;
@@ -1147,12 +1169,13 @@ canvas.addEventListener('contextrestored', () => { invalidateGround(); Diag.add(
 
 // 岩壁：用岩柱圖塊；擋住玩家時變半透明
 // 樹林（擋路的格子）；擋住玩家時變半透明
+// 擋路的格子；擋住玩家時變半透明
 function drawWall(x, y, ps) {
-  const s = toScreen(x + 0.5, y + 1);
+  const s = toScreen(x + 0.5, y + 0.5);
   let alpha = 1;
-  if (y + 1 > P.y && Math.abs(s.x - ps.x) < 40 && s.y - 70 < ps.y && s.y > ps.y - 6) alpha = 0.45;
+  if (x + y + 1 > P.x + P.y && Math.abs(s.x - ps.x) < 44 && ps.y < s.y + 4 && ps.y > s.y - 72) alpha = 0.45;
   ctx.globalAlpha = alpha;
-  drawTree(ctx, s.x, s.y, M.seed[idx(x, y)]);
+  drawTree(ctx, s.x, s.y + 6, M.seed[idx(x, y)]);
   ctx.globalAlpha = 1;
 }
 
@@ -1196,8 +1219,8 @@ function render() {
   for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
     if (M.tile[idx(x, y)] !== 1) continue;
     const s = toScreen(x, y);
-    if (s.x + TW < 0 || s.x - TW > W || s.y > H + 40 || s.y + TH * 2 < 0) continue;
-    draws.push({ d: y + 1, f: () => drawWall(x, y, ps) });
+    if (s.x + TW < -40 || s.x - TW > W + 40 || s.y > H + 60 || s.y + 120 < 0) continue;
+    draws.push({ d: x + y + 1, f: () => drawWall(x, y, ps) });
   }
   prof('ground');
   for (const d of G.decals) {
@@ -1224,26 +1247,26 @@ function render() {
   for (const p of G.props) {
     const s = toScreen(p.x, p.y);
     if (s.x < -80 || s.x > W + 80 || s.y < -60 || s.y > H + 120) continue;
-    draws.push({ d: p.y, f: () => { if (!drawPropSprite(ctx, s.x, s.y, p, G.t)) drawProp(ctx, s.x, s.y, p, G.t); } });
+    draws.push({ d: p.x + p.y, f: () => { if (!drawPropSprite(ctx, s.x, s.y, p, G.t)) drawProp(ctx, s.x, s.y, p, G.t); } });
   }
   for (const k of G.corpses) {
     const s = toScreen(k.x, k.y);
     if (s.x < -100 || s.x > W + 100 || s.y < -40 || s.y > H + 200) continue;
-    draws.push({ d: k.y - 0.3, f: () => drawCorpse(ctx, s.x, s.y, k) });
+    draws.push({ d: k.x + k.y - 0.6, f: () => drawCorpse(ctx, s.x, s.y, k) });
   }
   const hov = G.hover && G.hover.kind === 'enemy' ? G.hover.ref : null;
   for (const e of G.enemies) {
     const s = toScreen(e.x, e.y);
     if (s.x < -100 || s.x > W + 100 || s.y < -40 || s.y > H + 200) continue;
-    draws.push({ d: e.y, f: () => {
+    draws.push({ d: e.x + e.y, f: () => {
       if (e === hov || e === P.target) { ctx.strokeStyle = 'rgba(255,60,60,0.8)'; ctx.lineWidth = 1.5; ell(ctx, s.x, s.y, enemyW(e) + 4, (enemyW(e) + 4) / 2.2); ctx.stroke(); }
       drawEnemySprite(ctx, s.x, s.y, e);
     } });
   }
-  for (const t of G.turrets) { const s = toScreen(t.x, t.y); draws.push({ d: t.y, f: () => drawTurret(ctx, s.x, s.y, t, G.t) }); }
-  draws.push({ d: P.y, f: () => drawHero(ctx, ps.x, ps.y, P) });
-  for (const b of G.bullets) draws.push({ d: b.y, f: () => drawProjectile(ctx, b, 'shuriken') });
-  for (const b of G.ebullets) draws.push({ d: b.y, f: () => {
+  for (const t of G.turrets) { const s = toScreen(t.x, t.y); draws.push({ d: t.x + t.y, f: () => drawTurret(ctx, s.x, s.y, t, G.t) }); }
+  draws.push({ d: P.x + P.y, f: () => drawHero(ctx, ps.x, ps.y, P) });
+  for (const b of G.bullets) draws.push({ d: b.x + b.y, f: () => drawProjectile(ctx, b, 'shuriken') });
+  for (const b of G.ebullets) draws.push({ d: b.x + b.y, f: () => {
     if (b.kind) { drawProjectile(ctx, b, b.kind); return; }
     const s = toScreen(b.x, b.y);
     ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -1501,10 +1524,10 @@ function buildMinimapBase() {
 const mm = $('minimap'), mmc = mm.getContext('2d');
 function drawMinimap() {
   if (!G.showMini) return;
-  const k = (mm.height - 2) / MAP;
+  const k = Math.min(mm.width / 2, mm.height - 4) / MAP;
   mmc.setTransform(1, 0, 0, 1, 0, 0);
   mmc.clearRect(0, 0, mm.width, mm.height);
-  mmc.setTransform(k, 0, 0, k, (mm.width - MAP * k) / 2, 1);
+  mmc.setTransform(k, k / 2, -k, k / 2, mm.width / 2, 2);
   mmc.imageSmoothingEnabled = false;
   mmc.globalAlpha = 0.85; mmc.drawImage(mmBase, 0, 0); mmc.globalAlpha = 1;
   mmc.fillStyle = '#ffd23f'; mmc.fillRect(CAMP.x - 1.5, CAMP.y - 1.5, 3, 3);
@@ -1556,7 +1579,7 @@ function travelTo(id) {
   genMap();
   Object.assign(G, { enemies: [], bullets: [], ebullets: [], ground: [], parts: [], texts: [], fx: [], turrets: [], decals: [], corpses: [], killsSinceBoss: 0, bossAlive: false });
   P.x = CAMP.x; P.y = CAMP.y + 2.2; P.path = []; P.target = null; P.goal = null;
-  G.cam.x = P.x * TW / 2; G.cam.y = P.y * TH / 2 - 12;
+  camTo();
   invalidateGround();
   for (let i = 0; i < 10; i++) spawnPack();
   const z = curZone();
@@ -2017,6 +2040,7 @@ function renderMenu() {
   $('optMusicVal').textContent = $('optMusic').value + '%'; $('optSfxVal').textContent = $('optSfx').value + '%';
   $('optMusic').disabled = !c.music; $('optSfx').disabled = !c.sfx;
   document.querySelectorAll('#optQuality button').forEach(b => b.classList.toggle('on', +b.dataset.q === qualityIdx));
+  document.querySelectorAll('#optDir button').forEach(b => b.classList.toggle('on', b.dataset.d === DIR_MODE));
   $('saveInfo').textContent = G.testMode ? '（測試模式：不會存檔）' : G.lastSave ? `上次存檔：${fmtTime(G.lastSave)}` : '';
 }
 $('menuBtn').onclick = () => (isMenuOpen() ? closeMenu() : openMenu());
@@ -2029,6 +2053,7 @@ $('optSfx').onchange = () => Snd.play('coin');   // 放開滑桿時播一聲，�
 $('optMusicOn').onchange = e => { Snd.setEnabled('music', e.target.checked); renderMenu(); };
 $('optSfxOn').onchange = e => { Snd.setEnabled('sfx', e.target.checked); renderMenu(); if (e.target.checked) Snd.play('ui'); };
 document.querySelectorAll('#optQuality button').forEach(b => { b.onclick = () => { setQuality(+b.dataset.q); Snd.play('ui'); }; });
+document.querySelectorAll('#optDir button').forEach(b => { b.onclick = () => { setDirMode(b.dataset.d); P && (P._dir = undefined); for (const e of G.enemies) e._dir = undefined; renderMenu(); Snd.play('ui'); }; });
 $('btnSave').onclick = () => {
   const r = saveGame();
   if (r === true) { addLog('遊戲已儲存。', '#9f9'); Snd.play('ui'); }
@@ -2081,7 +2106,7 @@ async function startGame(p) {
   for (let i = 0; i < 10; i++) spawnPack();
   // 暖機：標題畫面還蓋著時，先把地板組好、所有圖各畫一次、整個畫面畫一次，
   // 進入遊戲後第一幀就不會停頓
-  G.cam.x = P.x * TW / 2; G.cam.y = P.y * TH / 2 - 12;
+  camTo();
   fullRebuild(G.cam.x - W / 2, G.cam.y - H / 2);
   Sprites.warmUp(ctx);
   try { update(0); render(); } catch (e) { reportError(e, '暖機'); }
