@@ -326,8 +326,9 @@ function findPath(fx, fy, tx, ty, limit = 4000, r = 0.3) {
 function newPlayer() {
   const p = {
     level: 1, exp: 0, str: 20, dex: 15, vit: 20, ene: 10, statPts: 0, skillPts: 1, skills: {},
-    gold: 100, inv: new Array(40).fill(null), equip: {}, potions: { hp: 5, mp: 3 }, rightSkill: 'burst', zone: 'field',
+    gold: 100, inv: new Array(40).fill(null), equip: {}, potions: { hp: 5, mp: 3 }, rightSkill: 'burst', leftSkill: 'attack', zone: 'field',
   };
+  ensureSkillSlots(p);
   p.equip.weapon = genItem(1, 0, 'weapon', 'rifle');
   p.equip.armor = genItem(1, 0, 'armor');
   initTransient(p);
@@ -933,14 +934,14 @@ function updatePlayer(dt) {
     p.path = []; p.target = null; p.goal = null;
     const w = mouseWorld();
     p.face = Math.atan2(w.y - p.y, w.x - p.x);
-    if (p.atkCd <= 0) basicAttack(w.x, w.y);
+    useSkill(p.leftSkill, w, true);
   } else if (m.down && m.mode === 'move') {
     m.repath -= dt;
     if (m.repath <= 0) { m.repath = 0.15; const w = mouseWorld(); setPath(w.x, w.y); }
   } else if (m.down && m.mode === 'attack' && G.hover && G.hover.kind === 'enemy') {
     p.target = G.hover.ref;
   }
-  if (m.rdown) castSkill(p.rightSkill, mouseWorld(), true);
+  if (m.rdown) useSkill(p.rightSkill, mouseWorld(), true, false);
 
   if (p.target) {
     const t = p.target;
@@ -950,7 +951,7 @@ function updatePlayer(dt) {
       if (d <= s.range - 0.3 && shotClear(p.x, p.y, t.x, t.y)) {
         p.path = [];
         p.face = Math.atan2(t.y - p.y, t.x - p.x);
-        if (p.atkCd <= 0) basicAttack(t.x, t.y);
+        useSkill(p.leftSkill, t, true);
       } else {
         p.retarget -= dt;
         if (p.retarget <= 0 || !p.path.length) { p.retarget = 0.3; setPath(t.x, t.y); }
@@ -1854,26 +1855,15 @@ function learnSkill(id) {
   if (!ok) { addLog(`需要等級 ${sk.req}${sk.pre ? ` 並學會「${SKILLS[sk.pre].name}」` : ''}`, '#f88'); return; }
   if (base >= SKILL_MAX) return;
   P.skills[id] = base + 1; P.skillPts--;
-  if (sk.type === 'active' && !(P.skills[P.rightSkill] > 0)) P.rightSkill = id;
+  if (sk.type === 'active' && validSkill(P.rightSkill) === ATTACK && P.rightSkill !== ATTACK) P.rightSkill = id;
+  if (sk.type === 'active' && !P.touchSkills.includes(id)) { const e = P.touchSkills.indexOf(null); if (e >= 0) P.touchSkills[e] = id; }
   P.st = calcStats(P);
   refreshPanels();
   if (!TOUCH) showTip(skillHtml(id));
 }
 
 // ---------- 快捷列 / HUD ----------
-function renderHotbar() {
-  const hb = $('hotbar'); hb.innerHTML = '';
-  HOTBAR.forEach((id, i) => {
-    const sk = SKILLS[id], tree = SKILL_TREES.find(t => t.skills.includes(id));
-    const d = document.createElement('div');
-    d.className = 'hk' + ((P.skills[id] || 0) > 0 ? '' : ' off') + (P.rightSkill === id ? ' sel' : '');
-    d.innerHTML = `<span class="hkKey">${i + 1}</span><span class="hkIcon" style="color:${tree.color}">${sk.icon}</span><div class="cdMask" id="cd_${id}"></div>`;
-    d.addEventListener('click', () => { if ((P.skills[id] || 0) > 0) { P.rightSkill = id; renderHotbar(); } else addLog(`尚未學習「${sk.name}」`, '#aaa'); });
-    d.addEventListener('mouseenter', () => showTip(skillHtml(id)));
-    d.addEventListener('mouseleave', hideTip);
-    hb.appendChild(d);
-  });
-}
+function renderHotbar() { if (P) renderSkillBar(); }
 let _targetKey = '';
 function updateHUD() {
   const s = P.st;
@@ -1889,13 +1879,7 @@ function updateHUD() {
   $('potHp').textContent = P.potions.hp; $('potMp').textContent = P.potions.mp;
   $('ptsBadge').classList.toggle('hidden', !P.statPts);
   $('skBadge').classList.toggle('hidden', !P.skillPts);
-  for (const id of HOTBAR) {
-    const el = $('cd_' + id); if (!el) continue;
-    const cd = P.cds[id] || 0, mx = P.cdMax[id] || 1;
-    el.style.height = (cd > 0 ? cd / mx * 100 : 0) + '%';
-    const lv = s.lv(id);
-    el.parentElement.classList.toggle('nomana', lv > 0 && P.mp < Math.round(SKILLS[id].mana(lv)));
-  }
+  updateSkillBarHUD();
   const b = [];
   if (P.buffs.stim) b.push(`<span style="color:#f88">狂氣 ${P.buffs.stim.toFixed(0)}s</span>`);
   if (P.buffs.shield) b.push(`<span style="color:#6ef">護盾 ${Math.ceil(P.shield)}</span>`);
@@ -1943,7 +1927,7 @@ canvas.addEventListener('mousedown', safe(e => {
     }
   } else if (e.button === 2) {
     G.mouse.rdown = true;
-    castSkill(P.rightSkill, mouseWorld(), false);
+    useSkill(P.rightSkill, mouseWorld(), false, false);
   }
 }, '滑鼠點擊'));
 addEventListener('mouseup', e => { if (e.button === 0) { G.mouse.down = false; G.mouse.mode = null; } if (e.button === 2) G.mouse.rdown = false; });
@@ -1966,6 +1950,7 @@ addEventListener('keydown', safe(e => {
   if (G.state !== 'play') return;
   const k = keyName(e);
   if (G.paused && k !== 'escape') return;   // 選單開著（暫停）時只接受 Esc
+  if (skillPickKey(k)) { e.preventDefault(); return; }   // 技能清單開著：數字鍵 = 設定快捷鍵
   if (MOVE_KEYS[k] || k === 'space') { e.preventDefault(); G.held[k] = true; return; }
   if (e.key === 'Tab') { e.preventDefault(); G.showMini = !G.showMini; mm.classList.toggle('hidden', !G.showMini); return; }
   if (e.key === 'F3') { e.preventDefault(); G.showFps = !G.showFps; return; }
@@ -1974,7 +1959,7 @@ addEventListener('keydown', safe(e => {
   if (e.key === 'F10') { e.preventDefault(); spawnGround(P.x, P.y, { item: genItem(P.level, 3) }); spawnGround(P.x, P.y, { item: genItem(P.level, 2) }); return; }
   if (e.key === 'F8') { e.preventDefault(); G.killsSinceBoss = 999; addLog('（測試）即將召喚首領……', '#888'); return; }
   if (e.repeat && 'cik'.includes(k)) return;
-  if (k >= '1' && k <= '8') { castSkill(HOTBAR[+k - 1], mouseWorld(), false); return; }
+  if (k >= '1' && k <= '8') { if (!e.repeat) pressHotkey(+k - 1); return; }
   switch (k) {
     case 'q': usePotion('hp'); break;
     case 'e': usePotion('mp'); break;
@@ -2010,7 +1995,7 @@ $('potMpBtn').onclick = () => usePotion('mp');
 function saveGame() {
   if (!P) return false;
   if (G.testMode) return 'test';
-  const keys = ['level', 'exp', 'str', 'dex', 'vit', 'ene', 'statPts', 'skillPts', 'skills', 'gold', 'inv', 'equip', 'potions', 'rightSkill', 'zone'];
+  const keys = ['level', 'exp', 'str', 'dex', 'vit', 'ene', 'statPts', 'skillPts', 'skills', 'gold', 'inv', 'equip', 'potions', 'rightSkill', 'leftSkill', 'hotkeys', 'touchSkills', 'zone'];
   const d = { v: 1, savedAt: Date.now() };
   for (const k of keys) d[k] = P[k];
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(d)); G.lastSave = d.savedAt; return true; } catch (e) { return false; }
@@ -2022,6 +2007,7 @@ function loadGame() {
     const d = JSON.parse(raw), p = newPlayer();
     for (const k in d) if (k !== 'v' && k !== 'savedAt') p[k] = d[k];
     p.inv = p.inv.map(x => x || null);
+    ensureSkillSlots(p);
     while (p.inv.length < 40) p.inv.push(null);
     p.inv.length = 40;
     initTransient(p);
@@ -2036,6 +2022,7 @@ addEventListener('beforeunload', () => { if (G.state === 'play') saveGame(); });
 const isMenuOpen = () => !$('panelMenu').classList.contains('hidden');
 function openMenu() {
   if (G.state !== 'play') return;
+  closeSkillPick();
   hideTip();
   $('panelMenu').classList.remove('hidden');
   G.paused = true; $('paused').classList.remove('hidden');
@@ -2054,6 +2041,7 @@ function renderMenu() {
   $('optMusic').disabled = !c.music; $('optSfx').disabled = !c.sfx;
   document.querySelectorAll('#optQuality button').forEach(b => b.classList.toggle('on', +b.dataset.q === qualityIdx));
   document.querySelectorAll('#optDir button').forEach(b => b.classList.toggle('on', b.dataset.d === DIR_MODE));
+  document.querySelectorAll('#optHotkey button').forEach(b => b.classList.toggle('on', b.dataset.h === HOTKEY_MODE));
   $('saveInfo').textContent = G.testMode ? '（測試模式：不會存檔）' : G.lastSave ? `上次存檔：${fmtTime(G.lastSave)}` : '';
 }
 $('menuBtn').onclick = () => (isMenuOpen() ? closeMenu() : openMenu());
@@ -2066,6 +2054,7 @@ $('optSfx').onchange = () => Snd.play('coin');   // 放開滑桿時播一聲，�
 $('optMusicOn').onchange = e => { Snd.setEnabled('music', e.target.checked); renderMenu(); };
 $('optSfxOn').onchange = e => { Snd.setEnabled('sfx', e.target.checked); renderMenu(); if (e.target.checked) Snd.play('ui'); };
 document.querySelectorAll('#optQuality button').forEach(b => { b.onclick = () => { setQuality(+b.dataset.q); Snd.play('ui'); }; });
+document.querySelectorAll('#optHotkey button').forEach(b => { b.onclick = () => { setHotkeyMode(b.dataset.h); renderMenu(); renderHotbar(); Snd.play('ui'); }; });
 document.querySelectorAll('#optDir button').forEach(b => { b.onclick = () => { setDirMode(b.dataset.d); P && (P._dir = undefined); for (const e of G.enemies) e._dir = undefined; renderMenu(); Snd.play('ui'); }; });
 $('btnSave').onclick = () => {
   const r = saveGame();
@@ -2129,7 +2118,7 @@ async function startGame(p) {
   document.querySelectorAll('.ingame').forEach(e => e.classList.remove('hidden'));
   renderHotbar();
   addLog(`歡迎來到${curZone().name}。`, '#ffd98a');
-  addLog(TOUCH ? '左下搖桿移動，按住「攻擊」自動攻擊，上方按鈕開技能樹。' : 'WASD 或左鍵移動，按住空白鍵或左鍵點怪攻擊，右鍵施放技能，K 開技能樹。', '#ccc');
+  addLog(TOUCH ? '左下搖桿移動，按住「攻擊」自動攻擊；長按攻擊鍵或技能鍵可以換技能。' : 'WASD 或左鍵移動，空白鍵 / 左鍵用左鍵技能，右鍵用右鍵技能；點快捷列兩側的格子可以換技能。', '#ccc');
   saveGame();
 }
 $('btnNew').onclick = () => {
@@ -2206,6 +2195,13 @@ if (location.hash.startsWith('#play')) {
     const zm = location.hash.match(/zone-(\w+)/);
     if (zm) travelTo(zm[1]);
     if (location.hash.includes('travel')) { openPanel('travel'); return; }   // 測試：傳送面板
+    if (location.hash.includes('skills')) {   // 測試：技能列與技能清單
+      P.level = 30; P.skills = { burst: 3, scatter: 2, grenade: 2, turret: 1, stim: 1, orbital: 1 };
+      P.touchSkills = ['grenade', 'scatter', null, null]; P.st = calcStats(P); P.mp = P.st.maxMp;
+      renderHotbar();
+      if (TOUCH) openSkillPick(2); else { openSkillPick('R', $('slotR')); pick.hover = 'orbital'; skillPickKey('6'); }
+      return;
+    }
     if (location.hash.includes('keys')) {   // 測試鍵盤：按住 D + S + 空白鍵 1.5 秒
       // 清出一塊空地，避免被營地物件擋住
       P.x = 30.5; P.y = 30.5;

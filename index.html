@@ -39,7 +39,7 @@
       <button id="btnNew" class="big">建立新角色</button>
     </div>
     <div class="help">
-      <b>操作</b>　WASD / 方向鍵：移動　｜　空白鍵（按住）：自動攻擊最近的敵人　｜　左鍵：移動 / 攻擊 / 拾取　｜　Shift+左鍵：原地投擲　｜　右鍵：施放選定技能　｜　1–8：快捷技能<br>
+      <b>操作</b>　WASD / 方向鍵：移動　｜　空白鍵（按住）：自動攻擊最近的敵人　｜　左鍵：移動 / 攻擊 / 拾取　｜　Shift+左鍵：原地投擲　｜　右鍵：右鍵技能　｜　點快捷列兩側換技能，清單中按 1–8 設定快捷鍵<br>
       Q：生命藥水　E：魔力藥水　｜　C：角色　I：背包　K：技能樹　T：回營地　Tab：小地圖　N：音樂開關　V：音效開關　Esc：系統選單 / 關閉視窗<br>
       <span class="dim">美術與音樂：<a href="https://pixel-boy.itch.io/ninja-adventure-asset-pack" target="_blank" rel="noopener" style="color:inherit">Ninja Adventure</a>（Pixel-boy &amp; AAA，CC0）</span><br>
       <span class="dim">F2：診斷報告　F3：顯示 FPS　F4：切換畫質　｜　測試鍵：F9 立即升級　F10 掉落史詩＋傳奇裝備　F8 召喚首領</span>
@@ -132,6 +132,8 @@
   <div class="setRow"><label><input type="checkbox" id="optSfxOn"> 音效</label><input type="range" id="optSfx" min="0" max="100" step="5"><span class="setVal" id="optSfxVal"></span></div>
   <h3>畫質</h3>
   <div class="setRow" id="optQuality"><button data-q="0">高</button><button data-q="1">中</button><button data-q="2">低</button><span class="dim">畫面不順時調低</span></div>
+  <h3>快捷鍵 1～8</h3>
+  <div class="setRow" id="optHotkey"><button data-h="swap">切換技能（暗黑 2）</button><button data-h="cast">直接施放</button></div>
   <h3>斜向時角色顯示</h3>
   <div class="setRow" id="optDir"><button data-d="auto">自動</button><button data-d="side">側面</button><button data-d="front">正面 / 背面</button></div>
   <div class="setRow"><button id="btnFull">全螢幕 開 / 關</button></div>
@@ -157,6 +159,7 @@
 <script src="js/render.js"></script>
 <script src="js/gfx.js"></script>
 <script src="js/zones.js"></script>
+<script src="js/skillbar.js"></script>
 <script src="js/touch.js"></script>
 <script src="js/game.js"></script>
 <script>

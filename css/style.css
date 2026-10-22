@@ -290,3 +290,26 @@ html.touch .hint { display: none; }
 .zoneBtn span.warn { color: #f88; }
 .zoneBtn small { grid-column: 1 / -1; color: #999; font-size: 11.5px; }
 .zoneBtn.cur { border-color: #5b9bff; opacity: 0.7; }
+
+/* 技能列：左右鍵大格 + 快捷鍵 */
+.hk.big { width: 60px; height: 60px; border-color: #b8944a; background: linear-gradient(#3a2c18, #140e08); }
+.hk.big .hkIcon { font-size: 32px; }
+.hk.big .hkKey { font-size: 10px; color: #f3d48a; }
+.hkHand { position: absolute; right: 3px; bottom: 1px; font-size: 9px; color: #aaa; }
+#slotL { margin-right: 6px; } #slotR { margin-left: 6px; }
+/* 技能選擇清單 */
+#skillPick { position: fixed; z-index: 150; background: linear-gradient(#1b1611, #0d0a08); border: 2px solid #c79a46; border-radius: 6px;
+  padding: 8px; box-shadow: 0 0 24px #000; min-width: 220px; max-width: min(360px, 94vw); max-height: 70vh; overflow-y: auto; }
+html.touch #skillPick { left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); }
+.spTitle { color: #f3d48a; font-size: 14px; font-weight: bold; margin: 0 2px 6px; }
+.spClose { float: right; cursor: pointer; color: #aaa; font-size: 20px; line-height: 16px; padding: 0 4px; }
+.spList { display: flex; flex-direction: column; gap: 4px; }
+.spItem { display: flex; align-items: center; gap: 8px; background: #221b13; color: #e8cf94; border: 1px solid #4a3c28; border-radius: 4px; padding: 6px 8px; text-align: left; }
+.spItem:hover { border-color: #d9a441; filter: brightness(1.2); }
+.spItem.cur { border-color: #ffd23f; box-shadow: 0 0 8px rgba(255,210,63,0.4); }
+.spIcon { width: 28px; font-size: 20px; text-align: center; text-shadow: 0 0 6px currentColor; }
+.spName { flex: 1; font-size: 13.5px; }
+.spKey { background: #6b5530; color: #fff; border-radius: 3px; padding: 0 6px; font-size: 12px; }
+.spHint, .spEmpty { color: #888; font-size: 11.5px; margin: 6px 2px 0; }
+html.touch .spItem { padding: 10px; font-size: 15px; }
+#tAtkSwap { right: 66px; bottom: 66px; width: 30px; height: 30px; font-size: 15px; background: #2a2014; border: 2px solid #c79a46; color: #f3d48a; z-index: 2; }

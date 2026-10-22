@@ -25,8 +25,16 @@ const TouchUI = (() => {
     return { x: P.x + Math.cos(P.face) * 4, y: P.y + Math.sin(P.face) * 4, e: null };
   }
 
-  // 已學會的主動技能（最多 4 個，依快捷列順序）
-  const learnedSkills = () => HOTBAR.filter(id => (P.skills[id] || 0) > 0).slice(0, 4);
+  // 技能鍵 i 目前的技能（沒學會就當作空的）
+  const slotSkill = i => { const id = P.touchSkills[i]; return id && (P.skills[id] || 0) > 0 ? id : null; };
+  // 長按（0.45 秒）打開技能清單；回傳 true 代表這次是長按
+  const LONG = 450;
+  function longPress(el, target) {
+    let tm = 0;
+    el.addEventListener('pointerdown', () => { el._long = false; clearTimeout(tm); tm = setTimeout(() => { el._long = true; atkHeld = false; el.classList.remove('down'); openSkillPick(target); }, LONG); });
+    const stop = () => clearTimeout(tm);
+    el.addEventListener('pointerup', stop); el.addEventListener('pointercancel', stop); el.addEventListener('pointerleave', stop);
+  }
 
   function build() {
     if (built) return; built = true;
@@ -36,6 +44,7 @@ const TouchUI = (() => {
       <div id="joyZone"><div id="joyBase"><div id="joyKnob"></div></div></div>
       <div id="tActions">
         <button id="tAtk" aria-label="攻擊"><span>攻擊</span></button>
+        <button id="tAtkSwap" aria-label="更換攻擊鍵技能">⇄</button>
         ${[0, 1, 2, 3].map(i => `<button class="tSk" id="tSk${i}" data-i="${i}"><span class="tIcon"></span><span class="tName"></span><div class="tCd"></div></button>`).join('')}
       </div>`;
     document.body.appendChild(ui);
@@ -71,15 +80,18 @@ const TouchUI = (() => {
     atk.addEventListener('pointerdown', e => { e.preventDefault(); atk.setPointerCapture(e.pointerId); atkHeld = true; atk.classList.add('down'); });
     const atkUp = () => { atkHeld = false; atk.classList.remove('down'); };
     atk.addEventListener('pointerup', atkUp); atk.addEventListener('pointercancel', atkUp);
+    // 攻擊鍵要按住連續攻擊，所以不用長按；旁邊的小按鈕用來換技能
+    $('tAtkSwap').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); openSkillPick('tL'); });
 
     // ---- 技能鍵 ----
     for (let i = 0; i < 4; i++) {
       const b = $('tSk' + i);
+      longPress(b, i);   // 長按：換這一格的技能
       b.addEventListener('pointerdown', e => {
         e.preventDefault();
         if (G.paused || P.dead) return;
-        const id = learnedSkills()[i];
-        if (!id) { addLog('按 技能 學習新技能後，這裡會出現技能按鈕。', '#aaa'); return; }
+        const id = slotSkill(i);
+        if (!id) { if (learnedActive().length) openSkillPick(i); else addLog('按 技能 學習新技能後，就能放到這裡。', '#aaa'); return; }
         const t = aim();
         if (t.e) P.face = Math.atan2(t.y - P.y, t.x - P.x);
         castSkill(id, t, false);
@@ -97,17 +109,19 @@ const TouchUI = (() => {
     if (t.e) {
       if (t.d <= P.st.range - 0.3) {
         P.face = Math.atan2(t.y - P.y, t.x - P.x);
-        if (P.atkCd <= 0) basicAttack(t.x, t.y);
+        useSkill(P.leftSkill, t, true);
       } else if (!joy.on && !keyMoveDir()) P.target = t.e;   // 太遠：自動走過去（正在手動移動時不搶方向）
-    } else if (P.atkCd <= 0) basicAttack(t.x, t.y);
+    } else useSkill(P.leftSkill, t, true);
   }
 
   // 每 0.05 秒：更新技能鍵的圖示、冷卻、魔力
   function hud() {
     if (!built) return;
-    const ids = learnedSkills();
+    const L = validSkill(P.leftSkill), atkLabel = L === ATTACK ? '攻擊' : skillInfo(L).name;
+    const span = $('tAtk').querySelector('span');
+    if (span.textContent !== atkLabel) { span.textContent = atkLabel; span.style.fontSize = atkLabel.length > 2 ? '13px' : ''; }
     for (let i = 0; i < 4; i++) {
-      const b = $('tSk' + i), id = ids[i];
+      const b = $('tSk' + i), id = slotSkill(i);
       b.classList.toggle('empty', !id);
       if (!id) { b.querySelector('.tIcon').textContent = '＋'; b.querySelector('.tName').textContent = ''; b.querySelector('.tCd').style.height = '0'; continue; }
       const sk = SKILLS[id], tree = SKILL_TREES.find(t => t.skills.includes(id));
