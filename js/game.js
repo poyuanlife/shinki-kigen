@@ -964,11 +964,12 @@ function updatePlayer(dt) {
     else if (!p.path.length) p.goal = null;
   }
 
-  const joy = TouchUI.joy;
-  if (joy.on && joy.mag > 0.15) {
+  const joy = TouchUI.joy, kv = keyMoveDir();
+  const moveIn = kv ? { x: kv[0], y: kv[1], mag: 1 } : (joy.on && joy.mag > 0.15 ? joy : null);
+  if (moveIn) {
     p.path = []; p.goal = null; p.target = null;
-    const step = s.moveSpeed * dt * Math.min(1, joy.mag * 1.25);
-    const [jx, jy] = screenToWorldDir(joy.x, joy.y);
+    const step = s.moveSpeed * dt * Math.min(1, moveIn.mag * 1.25);
+    const [jx, jy] = screenToWorldDir(moveIn.x, moveIn.y);
     moveBy(p, jx * step, jy * step);
     if (!(p.buffs.gatling > 0) && !(p.act && p.act.n === 'shoot')) p.face = Math.atan2(jy, jx);
     p.moving = Math.min(1, p.moving + dt * 8);
@@ -1008,7 +1009,7 @@ function update(dt) {
     Snd.music(bossFight ? 'boss' : inCampDist(P.x, P.y) < CAMP.r + 1 ? 'camp' : curZone().music);
   }
   updatePlayer(dt);
-  if (TOUCH) TouchUI.update(dt);
+  TouchUI.update(dt);
   updateEnemies(dt);
   updateBullets(dt);
   updateTurrets(dt);
@@ -1947,13 +1948,25 @@ canvas.addEventListener('mousedown', safe(e => {
 }, '滑鼠點擊'));
 addEventListener('mouseup', e => { if (e.button === 0) { G.mouse.down = false; G.mouse.mode = null; } if (e.button === 2) G.mouse.rdown = false; });
 addEventListener('mousemove', e => { G.mouse.x = e.clientX / ZOOM; G.mouse.y = e.clientY / ZOOM; placeTip(); });
-addEventListener('blur', () => { G.mouse.down = false; G.mouse.rdown = false; G.keys.shift = false; });
-addEventListener('keyup', e => { G.keys.shift = e.shiftKey; });
+// 鍵盤移動：WASD / 方向鍵，回傳畫面方向（單位向量），沒按就回傳 null
+const MOVE_KEYS = { w: [0, -1], arrowup: [0, -1], s: [0, 1], arrowdown: [0, 1], a: [-1, 0], arrowleft: [-1, 0], d: [1, 0], arrowright: [1, 0] };
+G.held = {};
+function keyMoveDir() {
+  if (G.paused || G.state !== 'play') return null;
+  let x = 0, y = 0;
+  for (const k in MOVE_KEYS) if (G.held[k]) { x += MOVE_KEYS[k][0]; y += MOVE_KEYS[k][1]; }
+  if (!x && !y) return null;
+  const d = Math.hypot(x, y); return [x / d, y / d];
+}
+const keyName = e => (e.key === ' ' ? 'space' : e.key.toLowerCase());
+addEventListener('blur', () => { G.mouse.down = false; G.mouse.rdown = false; G.keys.shift = false; G.held = {}; });
+addEventListener('keyup', e => { G.keys.shift = e.shiftKey; G.held[keyName(e)] = false; });
 addEventListener('keydown', safe(e => {
   G.keys.shift = e.shiftKey;
   if (G.state !== 'play') return;
-  const k = e.key.toLowerCase();
+  const k = keyName(e);
   if (G.paused && k !== 'escape') return;   // 選單開著（暫停）時只接受 Esc
+  if (MOVE_KEYS[k] || k === 'space') { e.preventDefault(); G.held[k] = true; return; }
   if (e.key === 'Tab') { e.preventDefault(); G.showMini = !G.showMini; mm.classList.toggle('hidden', !G.showMini); return; }
   if (e.key === 'F3') { e.preventDefault(); G.showFps = !G.showFps; return; }
   if (e.key === 'F4') { e.preventDefault(); cycleQuality(); return; }
@@ -1964,7 +1977,7 @@ addEventListener('keydown', safe(e => {
   if (k >= '1' && k <= '8') { castSkill(HOTBAR[+k - 1], mouseWorld(), false); return; }
   switch (k) {
     case 'q': usePotion('hp'); break;
-    case 'w': case 'e': usePotion('mp'); break;
+    case 'e': usePotion('mp'); break;
     case 'c': togglePanel('char'); break;
     case 'i': case 'b': togglePanel('inv'); break;
     case 'k': togglePanel('skill'); break;
@@ -2116,7 +2129,7 @@ async function startGame(p) {
   document.querySelectorAll('.ingame').forEach(e => e.classList.remove('hidden'));
   renderHotbar();
   addLog(`歡迎來到${curZone().name}。`, '#ffd98a');
-  addLog(TOUCH ? '左下搖桿移動，按住「攻擊」自動攻擊，上方按鈕開技能樹。' : '左鍵移動/攻擊，右鍵施放技能，K 開技能樹。', '#ccc');
+  addLog(TOUCH ? '左下搖桿移動，按住「攻擊」自動攻擊，上方按鈕開技能樹。' : 'WASD 或左鍵移動，按住空白鍵或左鍵點怪攻擊，右鍵施放技能，K 開技能樹。', '#ccc');
   saveGame();
 }
 $('btnNew').onclick = () => {
@@ -2193,6 +2206,27 @@ if (location.hash.startsWith('#play')) {
     const zm = location.hash.match(/zone-(\w+)/);
     if (zm) travelTo(zm[1]);
     if (location.hash.includes('travel')) { openPanel('travel'); return; }   // 測試：傳送面板
+    if (location.hash.includes('keys')) {   // 測試鍵盤：按住 D + S + 空白鍵 1.5 秒
+      // 清出一塊空地，避免被營地物件擋住
+      P.x = 30.5; P.y = 30.5;
+      for (let y = 22; y < 40; y++) for (let x = 22; x < 40; x++) { M.block[idx(x, y)] = 0; M.solid[idx(x, y)] = 0; }
+      const s0 = { x: isoX(P.x, P.y), y: isoY(P.x, P.y) };
+      for (const key of ['d', 's', ' ']) dispatchEvent(new KeyboardEvent('keydown', { key }));
+      // 直接跑 90 幀（1.5 秒），不用等計時器
+      // 怪物先清掉一半，留幾隻在附近讓空白鍵有目標
+      G.enemies = G.enemies.slice(0, 3); for (const [i, e] of G.enemies.entries()) { e.x = P.x + 3 + i; e.y = P.y + 3; e.aggro = false; }
+      let thrown = 0; const fb = fireBullet; fireBullet = (...a) => { thrown++; return fb(...a); };
+      for (let f = 0; f < 90; f++) { update(1 / 60); render(); }
+      fireBullet = fb;
+      { try {
+        for (const key of ['d', 's', ' ']) dispatchEvent(new KeyboardEvent('keyup', { key }));
+        const s1 = { x: isoX(P.x, P.y), y: isoY(P.x, P.y) };
+        const msg = `鍵盤測試：畫面位移 (${(s1.x - s0.x).toFixed(0)}, ${(s1.y - s0.y).toFixed(0)}) px，擲出 ${thrown} 枚，主角面向 ${pickDir(P, screenAngle(P.face))}`;
+        console.log('KEYTEST ' + msg); Diag.add('資訊', msg);
+        Diag.open();
+      } catch (err) { console.log('KEYTEST err ' + err.stack); } }
+      return;
+    }
     if (location.hash.includes('pickup')) {   // 測試拾取：金幣、藥水、裝備各撿一次
       P.inv[0] = undefined;   // 模擬舊 bug 留下的壞格子
       for (const o of [{ gold: 50 }, { potion: 'hp' }, { item: genItem(5, 2) }]) { spawnGround(P.x, P.y, o); pickupItem(G.ground[G.ground.length - 1]); }

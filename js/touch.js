@@ -91,14 +91,14 @@ const TouchUI = (() => {
 
   // 每幀：處理攻擊鍵
   function update() {
-    if (!built || P.dead || G.paused) return;
-    if (!atkHeld) return;
+    if (!P || P.dead || G.paused || G.state !== 'play') return;
+    if (!atkHeld && !(G.held && G.held.space)) return;
     const t = aim();
     if (t.e) {
       if (t.d <= P.st.range - 0.3) {
         P.face = Math.atan2(t.y - P.y, t.x - P.x);
         if (P.atkCd <= 0) basicAttack(t.x, t.y);
-      } else if (!joy.on) P.target = t.e;   // 太遠：自動走過去
+      } else if (!joy.on && !keyMoveDir()) P.target = t.e;   // 太遠：自動走過去（正在手動移動時不搶方向）
     } else if (P.atkCd <= 0) basicAttack(t.x, t.y);
   }
 
