@@ -32,19 +32,21 @@ function ensureSkillSlots(p) {
 }
 
 // 使用技能：普通攻擊 / 技能；技能放不出來（冷卻、魔力不足）時改用普通攻擊
-// fallback = true：技能放不出來時改用普通攻擊（左鍵、空白鍵、手機攻擊鍵）
-function useSkill(id, pt, held, fallback = true) {
+// 使用技能：左右鍵是什麼就只放什麼；技能冷卻中或魔力不足時什麼都不做（和暗黑 2 一樣，不會改用普通攻擊）
+function useSkill(id, pt, held) {
   id = validSkill(id);
-  if (id !== ATTACK && castSkill(id, pt, held)) return true;
-  if ((id === ATTACK || fallback) && P.atkCd <= 0) { P.face = Math.atan2(pt.y - P.y, pt.x - P.x); basicAttack(pt.x, pt.y); return true; }
-  return false;
+  if (id !== ATTACK) return castSkill(id, pt, held);
+  if (P.atkCd > 0) return false;
+  P.face = Math.atan2(pt.y - P.y, pt.x - P.x);
+  basicAttack(pt.x, pt.y);
+  return true;
 }
 
 // 按快捷鍵
 function pressHotkey(n) {
   const hk = P.hotkeys[n];
   if (!hk || !hk.id) { addLog(`快捷鍵 ${n + 1} 還沒設定：點左右技能格，滑鼠移到技能上按 ${n + 1}`, '#aaa'); return; }
-  if (HOTKEY_MODE === 'cast') { useSkill(hk.id, mouseWorld(), false, false); return; }
+  if (HOTKEY_MODE === 'cast') { useSkill(hk.id, mouseWorld(), false); return; }
   if (hk.id !== ATTACK && !((P.skills[hk.id] || 0) > 0)) { addLog(`尚未學習「${skillInfo(hk.id).name}」`, '#aaa'); return; }
   if (hk.hand === 'L') P.leftSkill = hk.id; else P.rightSkill = hk.id;
   Snd.play('ui');

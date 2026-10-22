@@ -941,7 +941,7 @@ function updatePlayer(dt) {
   } else if (m.down && m.mode === 'attack' && G.hover && G.hover.kind === 'enemy') {
     p.target = G.hover.ref;
   }
-  if (m.rdown) useSkill(p.rightSkill, mouseWorld(), true, false);
+  if (m.rdown) useSkill(p.rightSkill, mouseWorld(), true);
 
   if (p.target) {
     const t = p.target;
@@ -1927,7 +1927,7 @@ canvas.addEventListener('mousedown', safe(e => {
     }
   } else if (e.button === 2) {
     G.mouse.rdown = true;
-    useSkill(P.rightSkill, mouseWorld(), false, false);
+    useSkill(P.rightSkill, mouseWorld(), false);
   }
 }, '滑鼠點擊'));
 addEventListener('mouseup', e => { if (e.button === 0) { G.mouse.down = false; G.mouse.mode = null; } if (e.button === 2) G.mouse.rdown = false; });
@@ -2195,6 +2195,18 @@ if (location.hash.startsWith('#play')) {
     const zm = location.hash.match(/zone-(\w+)/);
     if (zm) travelTo(zm[1]);
     if (location.hash.includes('travel')) { openPanel('travel'); return; }   // 測試：傳送面板
+    if (location.hash.includes('leftcheck')) {   // 測試：左鍵設成爆裂符時不應出現普通攻擊
+      P.level = 30; P.skills = { grenade: 5 }; P.leftSkill = 'grenade'; P.st = calcStats(P); P.mp = P.st.maxMp = 9999;
+      P.x = 30.5; P.y = 30.5;
+      for (let y = 22; y < 40; y++) for (let x = 22; x < 40; x++) { M.block[idx(x, y)] = 0; M.solid[idx(x, y)] = 0; }
+      G.enemies = G.enemies.slice(0, 2); for (const e of G.enemies) { e.x = P.x + 3; e.y = P.y + 1; e.hp = e.maxHp = 1e9; }
+      let basic = 0; const ba = basicAttack; basicAttack = (...q) => { basic++; return ba(...q); };
+      G.held.space = true;
+      for (let f = 0; f < 120; f++) { update(1 / 60); render(); }
+      G.held.space = false; basicAttack = ba;
+      console.log('LEFTCHECK 爆裂符 ' + G.fx.filter(x => x.type === 'grenade' || x.type === 'boom').length + ' 個特效，普通攻擊 ' + basic + ' 次，冷卻 ' + (P.cds.grenade || 0).toFixed(2));
+      return;
+    }
     if (location.hash.includes('skills')) {   // 測試：技能列與技能清單
       P.level = 30; P.skills = { burst: 3, scatter: 2, grenade: 2, turret: 1, stim: 1, orbital: 1 };
       P.touchSkills = ['grenade', 'scatter', null, null]; P.st = calcStats(P); P.mp = P.st.maxMp;
