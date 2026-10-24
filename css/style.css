@@ -399,3 +399,8 @@ html.touch .spItem { padding: 10px; font-size: 15px; }
 #photoPanel .phDebugOut { margin-bottom: 8px; font-size: 13px; color: #d9ccb0; }
 #photoPanel .phDebugOut.hidden { display: none; }
 #photoPanel .phDebugOut img { display: block; max-width: 100%; margin-top: 6px; border-radius: 6px; }
+
+/* 照片主角：去背強度 */
+#photoPanel .phStr { display: flex; align-items: center; gap: 4px; margin: -2px 0 6px; font-size: 11px; color: #b8a888; }
+#photoPanel .phStr.hidden { display: none; }
+#photoPanel .phStr input { flex: 1; min-width: 0; accent-color: #c79a46; }

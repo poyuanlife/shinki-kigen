@@ -98,6 +98,7 @@ const PhotoHero = (() => {
           <div class="phSlot" data-id="${s.id}">
             <div class="phName">${s.name}<small>${s.tip}</small></div>
             <div class="phImg">${exampleHtml(s.id)}</div>
+            <div class="phStr hidden"><span>寬鬆</span><input type="range" min="0" max="100" value="45" aria-label="去背強度"><span>嚴格</span></div>
             <div class="phBtns">
               <label class="phBtn">選擇照片<input type="file" accept="image/*" hidden></label>
             </div>
@@ -117,7 +118,9 @@ const PhotoHero = (() => {
     $('phClose').onclick = close;
     panel.addEventListener('pointerdown', e => { if (e.target === panel) close(); });
     for (const el of panel.querySelectorAll('.phSlot')) {
-      for (const inp of el.querySelectorAll('input')) inp.addEventListener('change', () => { const f = inp.files[0]; inp.value = ''; if (f) pick(el.dataset.id, f); });
+      for (const inp of el.querySelectorAll('input[type=file]')) inp.addEventListener('change', () => { const f = inp.files[0]; inp.value = ''; if (f) pick(el.dataset.id, f); });
+      const rng = el.querySelector('.phStr input');
+      rng.addEventListener('input', () => { clearTimeout(rng._t); rng._t = setTimeout(() => adjust(el.dataset.id, +rng.value), 200); });
     }
     $('phMake').onclick = make;
     $('phUse').onclick = use;
@@ -152,10 +155,10 @@ const PhotoHero = (() => {
     box.innerHTML = '<span>處理中…</span>';
     try {
       const w = await helper();
-      const r = await w.cutout(file, t => status(t));
-      cut[id] = r;
-      box.innerHTML = '';
-      const im = new Image(); im.src = URL.createObjectURL(r.blob); box.appendChild(im);
+      const slot = panel.querySelector(`.phSlot[data-id="${id}"]`), rng = slot.querySelector('.phStr input');
+      const r = await w.cutout(file, t => status(t), +rng.value);
+      cut[id] = r; showCut(id, r);
+      slot.querySelector('.phStr').classList.remove('hidden');
       status(r.feetCut ? `${SLOTS.find(s => s.id === id).name}：腳好像沒有完全入鏡，動作可能會怪怪的，建議重拍。` : `${SLOTS.find(s => s.id === id).name}：去背完成。`, r.feetCut);
     } catch (e) {
       box.innerHTML = exampleHtml(id);
@@ -164,6 +167,26 @@ const PhotoHero = (() => {
     busy = false;
     $('phMake').disabled = !(cut.front && cut.side && cut.back);
     $('phDebug').classList.toggle('hidden', !(cut.front || cut.side || cut.back));
+  }
+
+  // 去背強度調整：用同一張照片重新套門檻（不重新辨識）
+  async function adjust(id, strength) {
+    if (!cut[id]) return;
+    if (busy) { clearTimeout(adjust._t); adjust._t = setTimeout(() => adjust(id, strength), 300); return; }
+    busy = true;
+    try {
+      const w = await helper(), r = await w.recut(cut[id].key, strength);
+      cut[id] = r; showCut(id, r);
+      // 照片改了，之前產生的角色要重做
+      if (made) { made = null; $('phUse').classList.add('hidden'); $('phPreview').classList.add('hidden'); }
+      status(SLOTS.find(s => s.id === id).name + '：去背已調整。全部調好後請按「產生角色」。');
+    } catch (e) { status((e && e.message) || String(e), true); }
+    busy = false;
+  }
+  function showCut(id, r) {
+    const box = panel.querySelector(`.phSlot[data-id="${id}"] .phImg`);
+    box.innerHTML = '';
+    const im = new Image(); im.src = URL.createObjectURL(r.blob); box.appendChild(im);
   }
 
   async function make() {

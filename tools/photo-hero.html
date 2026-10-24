@@ -84,31 +84,51 @@ function removeSpecks(img) {
 }
 
 // 去背：回傳 { blob（透明背景 PNG，裁到人物範圍）, w, h, lm（33 個身體點，裁切後的像素座標）, facing（側面朝哪邊）, feetCut（腳有沒有被切到） }
-window.cutout = async (blob, onMsg) => {
+// 去背結果先留著原圖和人像機率，之後調整「去背強度」時不用重新辨識
+const shots = new Map(); let shotSeq = 0;
+// strength：0（寬鬆，保留多）～100（嚴格，切得乾淨），預設 45
+function applyCut(st, strength) {
+  const { W, H, mw, mh, m } = st, img = new ImageData(new Uint8ClampedArray(st.rgba), W, H), d = img.data;
+  // 機率低於 lo 的不要，lo～hi 之間邊緣漸變；hi 最多到 0.98，最嚴格時人也一定是不透明的
+  const lo = 0.1 + Math.max(0, Math.min(100, strength)) / 100 * 0.72, hi = Math.min(0.98, lo + 0.3), width = hi - lo;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const v = m[Math.min(mh - 1, Math.floor(y * mh / H)) * mw + Math.min(mw - 1, Math.floor(x * mw / W))];
+    d[(y * W + x) * 4 + 3] = Math.round(Math.max(0, Math.min(1, (v - lo) / width)) * 255);
+  }
+  removeSpecks(img);
+  return img;
+}
+async function buildCut(key, strength) {
+  const st = shots.get(key), W = st.W, H = st.H, img = applyCut(st, strength);
+  const box = bbox(img, 128);
+  if (!box || box.w * box.h < W * H * 0.02) throw new Error(strength > 70 ? '去背太嚴格，人也被切掉了，請往「寬鬆」調。' : '照片裡找不到人。請拍全身、人站在畫面中間、光線充足。');
+  const pad = Math.round(Math.max(box.w, box.h) * 0.03);
+  const x0 = Math.max(0, box.x - pad), y0 = Math.max(0, box.y - pad), x1 = Math.min(W, box.x + box.w + pad), y1 = Math.min(H, box.y + box.h + pad);
+  const out = canvasOf(x1 - x0, y1 - y0); out.getContext('2d').putImageData(crop(img, x0, y0, x1 - x0, y1 - y0), 0, 0);
+  const lm = st.lm0.map(p => ({ x: p.x - x0, y: p.y - y0, v: p.v }));
+  // 側面朝哪邊：鼻子在耳朵的左邊 = 朝左
+  const facing = lm[0].x < (lm[7].x + lm[8].x) / 2 ? 'left' : 'right';
+  return { key, strength, blob: await toBlob(out), w: out.width, h: out.height, lm, facing, feetCut: box.y + box.h >= H - 2 };
+}
+
+// 去背：回傳 { key, blob（透明背景 PNG，裁到人物範圍）, w, h, lm（33 個身體點，裁切後的像素座標）, facing（側面朝哪邊）, feetCut（腳有沒有被切到） }
+window.cutout = async (blob, onMsg, strength = 45) => {
   const pose = await getPose(onMsg);
   onMsg && onMsg('去背中…');
   const img = await blobToImageData(blob, 1280), W = img.width, H = img.height;
   const c = canvasOf(W, H); c.getContext('2d').putImageData(img, 0, 0);
   const r = pose.detect(c);
   if (!r.segmentationMasks || !r.segmentationMasks.length || !r.landmarks.length) throw new Error('照片裡找不到人。請拍全身、人站在畫面中間、光線充足。');
-  const mask = r.segmentationMasks[0], mw = mask.width, mh = mask.height, m = mask.getAsFloat32Array(), d = img.data;
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-    const v = m[Math.min(mh - 1, Math.floor(y * mh / H)) * mw + Math.min(mw - 1, Math.floor(x * mw / W))];
-    d[(y * W + x) * 4 + 3] = Math.round(Math.max(0, Math.min(1, (v - 0.4) / 0.35)) * 255); // 邊緣柔和；不太確定的地方（0.4 以下）不要
-  }
-  removeSpecks(img);
-  const lm0 = r.landmarks[0].map(p => ({ x: p.x * W, y: p.y * H, v: p.visibility == null ? 1 : p.visibility }));
+  const mask = r.segmentationMasks[0];
+  const st = { W, H, rgba: new Uint8ClampedArray(img.data), mw: mask.width, mh: mask.height, m: new Float32Array(mask.getAsFloat32Array()),
+    lm0: r.landmarks[0].map(p => ({ x: p.x * W, y: p.y * H, v: p.visibility == null ? 1 : p.visibility })) };
   r.segmentationMasks.forEach(k => k.close && k.close());
-  const box = bbox(img, 128);
-  if (!box || box.w * box.h < W * H * 0.02) throw new Error('照片裡找不到人。請拍全身、人站在畫面中間、光線充足。');
-  const pad = Math.round(Math.max(box.w, box.h) * 0.03);
-  const x0 = Math.max(0, box.x - pad), y0 = Math.max(0, box.y - pad), x1 = Math.min(W, box.x + box.w + pad), y1 = Math.min(H, box.y + box.h + pad);
-  const out = canvasOf(x1 - x0, y1 - y0); out.getContext('2d').putImageData(crop(img, x0, y0, x1 - x0, y1 - y0), 0, 0);
-  const lm = lm0.map(p => ({ x: p.x - x0, y: p.y - y0, v: p.v }));
-  // 側面朝哪邊：鼻子在耳朵的左邊 = 朝左
-  const facing = lm[0].x < (lm[7].x + lm[8].x) / 2 ? 'left' : 'right';
-  return { blob: await toBlob(out), w: out.width, h: out.height, lm, facing, feetCut: box.y + box.h >= H - 2 };
+  const key = ++shotSeq; shots.set(key, st);
+  if (shots.size > 12) shots.delete(shots.keys().next().value); // 只留最近的幾張，省記憶體
+  return buildCut(key, strength);
 };
+// 調整去背強度（不重新辨識，很快）
+window.recut = (key, strength) => { if (!shots.has(key)) throw new Error('原圖已經清掉了，請重新選照片'); return buildCut(key, strength); };
 
 // MediaPipe 的身體點 → 骨架關節（以人物範圍的高度為 1 的座標）
 // 編號：0 鼻子、11/12 左/右肩、13/14 肘、15/16 手腕、23/24 髖、25/26 膝、27/28 腳踝、29/30 腳跟、31/32 腳尖（「左右」是本人的左右）
