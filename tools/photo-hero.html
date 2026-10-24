@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>照片主角（遊戲內部用）</title>
+</head>
+<body>
+<!--
+  遊戲「用照片當主角」的幫手頁面：遊戲用隱藏的 iframe 載入它（只有用到這個功能時才載入）。
+  1. cutout(照片)：用 Google MediaPipe 的姿勢偵測（Pose Landmarker）在手機上去背，同時找出肩、肘、手腕、髖、膝、腳踝
+  2. makeCharacter(正面, 側面, 背面)：用骨架動畫程式產生走路、跑步、攻擊、受傷、倒下，不做像素化
+  照片全部在這台裝置上處理，不會上傳。
+  放在獨立頁面，是為了讓轉換工具的程式（pixel-core、sprite-core、rig-core）不會跟遊戲的程式名稱衝突。
+-->
+<script src="pixel-core.js"></script>
+<script src="sprite-core.js"></script>
+<script src="rig-core.js"></script>
+<script>
+'use strict';
+const MP_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1';
+// 姿勢偵測（完整版，約 9 MB）：全身去背比人像模型準，鞋子也切得到，還會給關節位置
+const MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task';
+let poseP = null;
+
+// 第一次用時下載去背工具（約 13 MB），之後瀏覽器會記住
+function getPose(onMsg) {
+  if (poseP) return poseP;
+  poseP = (async () => {
+    onMsg && onMsg('下載去背工具中（只有第一次，約 13 MB）…');
+    const mp = await import(`${MP_BASE}/vision_bundle.mjs`);
+    const files = await mp.FilesetResolver.forVisionTasks(`${MP_BASE}/wasm`);
+    let err = null;
+    for (const delegate of ['GPU', 'CPU']) {
+      try {
+        return await mp.PoseLandmarker.createFromOptions(files, {
+          baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: 'IMAGE', numPoses: 1, outputSegmentationMasks: true,
+        });
+      } catch (e) { err = e; }
+    }
+    throw err || new Error('無法啟動去背工具');
+  })();
+  poseP.catch(() => { poseP = null; }); // 失敗的話下次再試
+  return poseP;
+}
+
+const canvasOf = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const toBlob = c => new Promise(ok => c.toBlob(ok, 'image/png'));
+async function blobToImageData(blob, max) {
+  const bmp = await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  const k = Math.min(1, max / Math.max(bmp.width, bmp.height)), w = Math.round(bmp.width * k), h = Math.round(bmp.height * k);
+  const c = canvasOf(w, h), x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(bmp, 0, 0, w, h);
+  bmp.close && bmp.close();
+  return x.getImageData(0, 0, w, h);
+}
+
+// 去背：回傳 { blob（透明背景 PNG，裁到人物範圍）, w, h, lm（33 個身體點，裁切後的像素座標）, facing（側面朝哪邊）, feetCut（腳有沒有被切到） }
+window.cutout = async (blob, onMsg) => {
+  const pose = await getPose(onMsg);
+  onMsg && onMsg('去背中…');
+  const img = await blobToImageData(blob, 1280), W = img.width, H = img.height;
+  const c = canvasOf(W, H); c.getContext('2d').putImageData(img, 0, 0);
+  const r = pose.detect(c);
+  if (!r.segmentationMasks || !r.segmentationMasks.length || !r.landmarks.length) throw new Error('照片裡找不到人。請拍全身、人站在畫面中間、光線充足。');
+  const mask = r.segmentationMasks[0], mw = mask.width, mh = mask.height, m = mask.getAsFloat32Array(), d = img.data;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const v = m[Math.min(mh - 1, Math.floor(y * mh / H)) * mw + Math.min(mw - 1, Math.floor(x * mw / W))];
+    d[(y * W + x) * 4 + 3] = Math.round(Math.max(0, Math.min(1, (v - 0.3) / 0.4)) * 255); // 邊緣柔和
+  }
+  const lm0 = r.landmarks[0].map(p => ({ x: p.x * W, y: p.y * H, v: p.visibility == null ? 1 : p.visibility }));
+  r.segmentationMasks.forEach(k => k.close && k.close());
+  const box = bbox(img, 128);
+  if (!box || box.w * box.h < W * H * 0.02) throw new Error('照片裡找不到人。請拍全身、人站在畫面中間、光線充足。');
+  const pad = Math.round(Math.max(box.w, box.h) * 0.03);
+  const x0 = Math.max(0, box.x - pad), y0 = Math.max(0, box.y - pad), x1 = Math.min(W, box.x + box.w + pad), y1 = Math.min(H, box.y + box.h + pad);
+  const out = canvasOf(x1 - x0, y1 - y0); out.getContext('2d').putImageData(crop(img, x0, y0, x1 - x0, y1 - y0), 0, 0);
+  const lm = lm0.map(p => ({ x: p.x - x0, y: p.y - y0, v: p.v }));
+  // 側面朝哪邊：鼻子在耳朵的左邊 = 朝左
+  const facing = lm[0].x < (lm[7].x + lm[8].x) / 2 ? 'left' : 'right';
+  return { blob: await toBlob(out), w: out.width, h: out.height, lm, facing, feetCut: box.y + box.h >= H - 2 };
+};
+
+// MediaPipe 的身體點 → 骨架關節（以人物範圍的高度為 1 的座標）
+// 編號：0 鼻子、11/12 左/右肩、13/14 肘、15/16 手腕、23/24 髖、25/26 膝、27/28 腳踝、29/30 腳跟、31/32 腳尖（「左右」是本人的左右）
+function jointsFromPose(kind, lm, img) {
+  const box = bbox(img, 128), P = p => ({ x: (p.x - box.x) / box.h, y: (p.y - box.y) / box.h });
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  const lerp = (a, b, t) => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  const foot = (heel, toe) => ({ x: (heel.x + toe.x) / 2, y: Math.max(heel.y, toe.y) });
+  const sh = mid(lm[11], lm[12]), J = {};
+  J.head = P({ x: lm[0].x, y: box.y + box.h * 0.005 });
+  J.neck = P(lerp(sh, lm[0], 0.3));
+  J.pelvis = P(mid(lm[23], lm[24]));
+  if (kind === 'side') {
+    // 側面：用比較看得到的那一邊
+    const near = (lm[11].v + lm[13].v + lm[15].v) >= (lm[12].v + lm[14].v + lm[16].v) ? 0 : 1;
+    const nearL = (lm[23].v + lm[25].v + lm[27].v) >= (lm[24].v + lm[26].v + lm[28].v) ? 0 : 1;
+    J.shoulder = P(lm[11 + near]); J.elbow = P(lm[13 + near]); J.hand = P(lm[15 + near]);
+    J.hip = P(mid(lm[23], lm[24])); J.knee = P(lm[25 + nearL]); J.foot = P(foot(lm[29 + nearL], lm[31 + nearL]));
+  } else {
+    // 正面、背面：依畫面上的左右分（背面時本人的左手在畫面左邊，所以不看編號、看位置）
+    const sL = lm[11].x <= lm[12].x ? 0 : 1, hL = lm[23].x <= lm[24].x ? 0 : 1;
+    const arm = (s, n) => { J['shoulder' + n] = P(lm[11 + s]); J['elbow' + n] = P(lm[13 + s]); J['hand' + n] = P(lm[15 + s]); };
+    const leg = (s, n) => { J['hip' + n] = P(lm[23 + s]); J['knee' + n] = P(lm[25 + s]); J['foot' + n] = P(foot(lm[29 + s], lm[31 + s])); };
+    arm(sL, 'L'); arm(1 - sL, 'R'); leg(hL, 'L'); leg(1 - hL, 'R');
+  }
+  return J;
+}
+
+// 產生角色：photos = { front, side, back }，每張是 cutout() 的結果
+// 回傳 { sheets: { walk: Blob, ... }, meta: { res, anims: { walk: { w, h, frames, ox, oy, ms }, ... } }, warn }
+const ANIM_MS = { walk: 120, idle: 260, run: 85, attack: 60, hit: 60, dead: 160 };
+window.makeCharacter = async (photos, onMsg) => {
+  onMsg && onMsg('產生動作中…');
+  await new Promise(r => setTimeout(r, 30));
+  const images = {}, joints = {};
+  for (const id of ['front', 'side', 'back']) {
+    const ph = photos[id]; if (!ph) continue;
+    let data = await blobToImageData(ph.blob, 4096), lm = ph.lm;
+    // 側面一律轉成朝左（骨架程式用朝左計算）
+    if (id === 'side' && ph.facing === 'right') { data = mirror(data); lm = lm.map(p => ({ x: data.width - 1 - p.x, y: p.y, v: p.v })); }
+    images[id] = { data, bg: { bgOn: false } };
+    if (lm) joints[id] = jointsFromPose(id === 'side' ? 'side' : 'front', lm, data);
+  }
+  const s = Object.assign({}, SPRITE_DEFAULTS, RIG_DEFAULTS, {
+    animMode: 'rig', dirCount: '4', w: 48, h: 64, bgMode: 'off', photo: true, photoQ: 2, outline: 'none', sideFacing: 'left',
+    rigFrames: '6', idleFrames: '4', actRun: true, actAtk: true, actHit: true, actDead: true,
+  });
+  const res = generateRigSprite(images, s, joints);
+  if (!res.actions) throw new Error((res.warn || []).join(' ') || '產生失敗');
+  const sheets = {}, anims = {};
+  for (const a of res.actions) {
+    const c = canvasOf(a.sheet.width, a.sheet.height); c.getContext('2d').putImageData(a.sheet, 0, 0);
+    sheets[a.id] = await toBlob(c);
+    anims[a.id] = { w: a.W, h: a.H, frames: a.N, ox: a.ox, oy: a.oy, ms: ANIM_MS[a.id] || 150 };
+  }
+  // res：素材 1 像素畫成幾個遊戲像素（遊戲的 PX 是 2）。0.5 / q → 每格 48×64 的大小在遊戲裡是 64 像素高
+  const warn = (res.warn || []).filter(w => !/武器|4 方向/.test(w));
+  return { sheets, meta: { version: 1, res: 0.5 / res.q, anims }, warn };
+};
+window.photoHeroReady = true;
+</script>
+</body>
+</html>

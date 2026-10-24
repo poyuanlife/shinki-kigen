@@ -172,7 +172,8 @@ function inpaint(img, mask) {
 }
 
 // 建立骨架：J 是像素座標，R 是手腳半徑
-function rigBuild(work, kind, J, R) {
+// opt.fillArmTorso：側面時，手臂擋住的軀幹（肩到腰）一律補色（照片用：真人手臂常貼在身體後半部）
+function rigBuild(work, kind, J, R, opt = {}) {
   const W = work.width, H = work.height, d = work.data;
   const limbs = Object.entries(RIG_LIMBS[kind]);
   const parts = []; // [{ limb, seg: 'U'|'D' }]
@@ -238,7 +239,8 @@ function rigBuild(work, kind, J, R) {
     for (let x = W - 1; x >= 0; x--) { if (labels[y * W + x] === 0) last = x; right[x] = last - x; }
     for (let x = 0; x < W; x++) {
       const p = y * W + x; if (labels[p] <= 0) continue;
-      if (left[x] <= reach && right[x] <= reach) fill[p] = 1; else bd[p * 4 + 3] = 0;
+      const armTorso = opt.fillArmTorso && kind === 'side' && limbs[(labels[p] - 1) >> 1][0].startsWith('arm') && y >= J.shoulder.y && y <= J.pelvis.y;
+      if ((left[x] <= reach && right[x] <= reach) || armTorso) fill[p] = 1; else bd[p * 4 + 3] = 0;
     }
   }
   inpaint(base, fill);
@@ -637,13 +639,19 @@ function generateRigSprite(images, s, joints, ver) {
     const key = JSON.stringify([ver, id, Jn, R, s.bgMode, s.bgManual, s.bgTol, s.bgFlood, s.sideFacing, rwork.width,
       s.chibiOn && [s.chibiHeads, s.chibiHead, s.chibiLegs, s.chibiWidth]]);
     let rig = ver != null && rigCache.get(id);
-    if (!rig || rig.key !== key) { rig = rigBuild(rwork, kind, J, R); rig.key = key; if (ver != null) rigCache.set(id, rig); }
+    if (!rig || rig.key !== key) { rig = rigBuild(rwork, kind, J, R, { fillArmTorso: !!s.photo }); rig.key = key; if (ver != null) rigCache.set(id, rig); }
     rig.weapon = weapon; rig.bow = bow; rig.arrow = arrow; rig.lineW = lineW;
     const o = out[id] = { rig, acts: {} };
+    // 第一輪只量每一幀的範圍（不留圖，省記憶體；手機上幾十張大圖會撐爆）
     for (const a of acts) {
       const poses = []; for (let f = 0; f < a.N; f++) poses.push(a.pose(rig, f, a.N, id));
-      const [mx, my] = marg(a);
-      o.acts[a.id] = { poses, mx, my, cx: mx + rwork.width / 2, bottom: my + HN, frames: poses.map(p => rigRender(rig, p, mx, my)) };
+      const [mx, my] = marg(a), A = o.acts[a.id] = { poses, mx, my, cx: mx + rwork.width / 2, bottom: my + HN, boxes: [] };
+      for (const p of poses) {
+        const f = rigRender(rig, p, mx, my);
+        let b = bbox(f, 128); const ba = f.acc && bbox(f.acc, 60);
+        if (ba) b = b ? unionBox(b, ba) : ba;
+        A.boxes.push(b);
+      }
     }
     // 關節點一律在原圖上編輯；Q 版時分區顏色是在變形後的圖上算的，對不上原圖，所以不給
     info[id] = { work, joints: Jn, J, R, labels: s.chibiOn ? null : rig.labels, kind };
@@ -653,32 +661,39 @@ function generateRigSprite(images, s, joints, ver) {
   let k = innerH / (HN * headroom);
   for (const id in out) for (const a of acts) if (!a.big) {
     const A = out[id].acts[a.id];
-    for (const f of A.frames) { const b = bbox(f, 128); if (b) k = Math.min(k, innerW / 2 / Math.max(1, A.cx - b.x, b.x + b.w - A.cx)); }
-  }
-  // 身體上下移動對齊到整數像素（縮小後），不然盔甲花紋每一幀都會跳動
-  for (const id in out) for (const a of acts) {
-    const o = out[id], A = o.acts[a.id];
-    A.frames = A.poses.map((p, f) => {
-      const snapped = Math.round(p.up * k) / k;
-      return snapped === p.up ? A.frames[f] : rigRender(o.rig, Object.assign({}, p, { up: snapped }), A.mx, A.my);
-    });
+    for (const b of A.boxes) if (b) k = Math.min(k, innerW / 2 / Math.max(1, A.cx - b.x, b.x + b.w - A.cx));
   }
   // 每個動作的格子大小：攻擊的刀會伸出去，格子放大到裝得下（腳底位置不變）
   for (const a of acts) {
     a.W = W; a.H = H;
     if (!a.big) continue;
     let half = 0, top = 0;
-    for (const id in out) for (const f of out[id].acts[a.id].frames) {
-      let b = bbox(f, 128); const o = out[id].acts[a.id], ba = f.acc && bbox(f.acc, 60);
-      if (ba) b = b ? unionBox(b, ba) : ba;
-      if (!b) continue;
-      half = Math.max(half, o.cx - b.x, b.x + b.w - o.cx); top = Math.max(top, o.bottom - b.y);
-    }
+    for (const id in out) { const o = out[id].acts[a.id]; for (const b of o.boxes) if (b) { half = Math.max(half, o.cx - b.x, b.x + b.w - o.cx); top = Math.max(top, o.bottom - b.y); } }
     a.W = Math.max(W, 2 * Math.ceil(half * k + ol + 0.5)); a.H = Math.max(H, Math.ceil(top * k + ol * 2 + 0.5));
   }
+  // 照片模式：不做像素畫，直接平滑縮小；q = 輸出解析度倍率（2 = 格子大小的 2 倍，手機上才清楚）
+  const photo = !!s.photo, q = photo ? (s.photoQ || 2) : 1;
+  const smooth = (src, rx, ry, rw, rh, CW, CH) => {
+    const t = document.createElement('canvas'); t.width = rw; t.height = rh; t.getContext('2d').putImageData(rigRegion(src, rx, ry, rw, rh), 0, 0);
+    const c = document.createElement('canvas'); c.width = CW; c.height = CH;
+    const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(t, 0, 0, CW, CH);
+    return x.getImageData(0, 0, CW, CH);
+  };
   const pix = (img, o, CW, CH) => {
     const rw = Math.round(CW / k), rh = Math.round(CH / k);
     const rx = Math.round(o.cx - rw / 2), ry = Math.round(o.bottom - (CH - ol) / k);
+    if (photo) {
+      const px = smooth(img, rx, ry, rw, rh, CW * q, CH * q);
+      if (img.acc) { // 照片模式的弓、弦、箭：直接疊上去
+        const ap = smooth(img.acc, rx, ry, rw, rh, CW * q, CH * q), d = px.data, a = ap.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const al = a[i + 3] / 255; if (!al || (img.accBehind && d[i + 3] > 128)) continue;
+          for (let c = 0; c < 3; c++) d[i + c] = a[i + c] * al + d[i + c] * (1 - al);
+          d[i + 3] = Math.max(d[i + 3], a[i + 3]);
+        }
+      }
+      return px;
+    }
     const g = { W: CW, H: CH, rx: 0, ry: 0, rw, rh, dx: 0, dy: 0, dw: CW, dh: CH };
     const px = resample(rigRegion(img, rx, ry, rw, rh), g, s.resample);
     thresholdAlpha(px, 128);
@@ -693,8 +708,18 @@ function generateRigSprite(images, s, joints, ver) {
     }
     return px;
   };
+  // 第二輪：一幀一幀畫、馬上縮小。像素畫時身體上下移動對齊到整數像素（不然盔甲花紋每一幀都會跳動）
   const sp = {}; // sp[動作][角度] = 幀
-  for (const a of acts) { sp[a.id] = {}; for (const id in out) sp[a.id][id] = out[id].acts[a.id].frames.map(f => pix(f, out[id].acts[a.id], a.W, a.H)); }
+  for (const a of acts) {
+    sp[a.id] = {};
+    for (const id in out) {
+      const o = out[id], A = o.acts[a.id];
+      sp[a.id][id] = A.poses.map(p => {
+        const pp = photo ? p : Object.assign({}, p, { up: Math.round(p.up * k) / k });
+        return pix(rigRender(o.rig, pp, A.mx, A.my), A, a.W, a.H);
+      });
+    }
+  }
   // 遊戲裡射出去的箭：用同樣的縮放比例縮小
   let projectile = null;
   if (arrow) {
@@ -704,10 +729,11 @@ function generateRigSprite(images, s, joints, ver) {
     thresholdAlpha(projectile, 40); // 箭桿很細，用「保留細線」的門檻
   }
   const all = acts.flatMap(a => Object.values(sp[a.id]).flat()).concat(projectile ? [projectile] : []);
-  const pal = choosePalette(countColors(all), s);
+  // 照片模式不減色、不加外框，保留照片原本的樣子
+  const pal = photo ? null : choosePalette(countColors(all), s);
   if (pal) all.forEach(o => applyPalette(o, pal, s));
-  if (s.cleanFloat || s.cleanSpeck) all.forEach(o => cleanup(o, s));
-  const finish = f => { const c = cloneImg(f); if (s.outline !== 'none') outline(c, s); return c; };
+  if (!photo && (s.cleanFloat || s.cleanSpeck)) all.forEach(o => cleanup(o, s));
+  const finish = f => { const c = cloneImg(f); if (!photo && s.outline !== 'none') outline(c, s); return c; };
   // 射出去的箭也加外框（箭桿跟泥土地的顏色很像，沒外框會看不到）；四周先留 1 像素放外框
   if (projectile && s.outline !== 'none') {
     const p2 = new ImageData(projectile.width + 2, projectile.height + 2);
@@ -719,11 +745,12 @@ function generateRigSprite(images, s, joints, ver) {
   const actions = acts.map(a => {
     const v = sp[a.id], dirs = [v.front, v.back, v.side, v.side.map(mirror)].map(fr => fr.map(finish)), order = [];
     for (let f = 0; f < a.N; f++) for (let d = 0; d < 4; d++) order.push(dirs[d][f]);
-    return { id: a.id, label: a.label, name: a.name, W: a.W, H: a.H, N: a.N, dirs, sheet: compose(order, 4, a.N, a.W, a.H) };
+    return { id: a.id, label: a.label, name: a.name, W: a.W * q, H: a.H * q, N: a.N, dirs, sheet: compose(order, 4, a.N, a.W * q, a.H * q),
+      ox: a.W * q / 2, oy: (a.H - ol) * q };
   });
   const walk = actions[0], idle = actions[1];
   return {
-    W, H, cols: 4, frames: walk.N, walk: walk.dirs, idle: idle.dirs.map(fr => fr[0]), actions, warn, rig: info,
+    W: W * q, H: H * q, q, photo, cols: 4, frames: walk.N, walk: walk.dirs, idle: idle.dirs.map(fr => fr[0]), actions, warn, rig: info,
     base: { sprites: { front: sp.idle.front[0], back: sp.idle.back[0], side: sp.idle.side[0] }, pal, synth: {} },
     walkSheet: walk.sheet, idleSheet: idle.sheet, projectile, weaponKind: isBow ? 'bow' : weapon ? 'sword' : null,
   };

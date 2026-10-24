@@ -2368,6 +2368,7 @@ addEventListener('keydown', safe(e => {
     case 'r': if (!e.repeat) toggleRun(); break;
     case 'm': G.showMini = !G.showMini; mm.classList.toggle('hidden', !G.showMini); break;
     case 'escape': {
+      if (typeof PhotoHero !== 'undefined' && PhotoHero.isOpen()) { PhotoHero.close(); break; }
       if (isMenuOpen()) { closeMenu(); break; }
       let any = false;
       for (const p in PANELS) if (isOpen(p)) { closePanel(p); any = true; }
@@ -2458,6 +2459,7 @@ document.querySelectorAll('#optQuality button').forEach(b => { b.onclick = () =>
 document.querySelectorAll('#optHotkey button').forEach(b => { b.onclick = () => { setHotkeyMode(b.dataset.h); renderMenu(); renderHotbar(); Snd.play('ui'); }; });
 document.querySelectorAll('#optDir button').forEach(b => { b.onclick = () => { setDirMode(b.dataset.d); P && (P._dir = undefined); for (const e of G.enemies) e._dir = undefined; renderMenu(); Snd.play('ui'); }; });
 $('btnCamp').onclick = () => { closeMenu(); returnToCamp(); };
+$('btnPhoto').onclick = () => { closeMenu(); PhotoHero.open(); };
 $('btnSave').onclick = () => {
   const r = saveGame();
   if (r === true) { addLog('遊戲已儲存。', '#9f9'); Snd.play('ui'); }
@@ -2503,6 +2505,7 @@ async function startGame(p) {
   await new Promise(r => setTimeout(r, 30));   // 讓「準備地圖中」的文字先顯示出來
   Diag.mute(4000);   // 準備階段本來就會花一點時間，不算畫面停頓
   P = p;
+  if (typeof PhotoHero !== 'undefined') PhotoHero.restore(p).catch(() => {});   // 這個職業有照片主角就換上
   G.zone = ZONE_BY_ID[p.zone] ? p.zone : 'field'; P.zone = G.zone;
   if (!G.mapReady || G.mapZone !== G.zone) genMap();
   $('zoneName').textContent = curZone().name;

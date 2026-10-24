@@ -11,7 +11,7 @@ const PX = 2;   // 素材 1 像素 = 邏輯畫面 2 像素（再乘上鏡頭縮�
 const IMG = {};
 function img(p) {
   let im = IMG[p];
-  if (!im) { im = IMG[p] = new Image(); im.src = NA + p; }
+  if (!im) { im = IMG[p] = new Image(); im.src = /^(blob|data):/.test(p) ? p : NA + p; }   // blob：照片主角（存在這台裝置上的圖）
   return im;
 }
 const ready = im => im.complete && im.naturalWidth > 0;
@@ -115,8 +115,11 @@ function drawSpec(c, specName, act, dir, t, x, y, scale = PX, flash = 0) {
   scale *= sp.res || 1;
   const dx = snap(x - (a.ox !== undefined ? a.ox : sp.ox) * scale), dy = snap(y - (a.oy !== undefined ? a.oy : sp.oy) * scale);
   const draw = () => c.drawImage(im, col * a.cw, row * a.ch, a.cw, a.ch, dx, dy, a.cw * scale, a.ch * scale);
+  // 照片主角：平滑縮放（像素畫才要保持銳利）
+  if (sp.smooth) { c.save(); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; }
   draw();
   if (flash > 0) { c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.min(1, flash); draw(); c.restore(); }
+  if (sp.smooth) c.restore();
   return true;
 }
 
