@@ -540,7 +540,7 @@ function rigRender(rig, pose, mx, my) {
     const [r0, m] = chains[name], R0 = J[r0], M = J[m], wpOk = !far && lp.weapon && (mode === 'weapon') === !!lp.weapon.behind;
     if (mode === 'weapon' && !wpOk) return;
     ctx.save();
-    if (far) ctx.filter = realFar ? 'brightness(0.9)' : 'brightness(0.72)';
+    if (far) ctx.filter = realFar ? 'brightness(0.9)' : rig.photo ? 'brightness(0.86)' : 'brightness(0.72)'; // 照片的後腳淡一點，才不會像影子
     if (name.startsWith('arm')) bodyT(); else ctx.translate(mx, my - up);
     ctx.translate(R0.x, R0.y + (lp.dy || 0)); ctx.rotate(lp.a1 || 0); ctx.scale(1, lp.sy || 1); ctx.translate(-R0.x, -R0.y);
     ctx.save();
@@ -664,7 +664,7 @@ function generateRigSprite(images, s, joints, ver) {
       s.chibiOn && [s.chibiHeads, s.chibiHead, s.chibiLegs, s.chibiWidth]]);
     let rig = ver != null && rigCache.get(id);
     if (!rig || rig.key !== key) { rig = rigBuild(rwork, kind, J, R, { fillArmTorso: !!s.photo, allLegs: !!s.photo }); rig.key = key; if (ver != null) rigCache.set(id, rig); }
-    rig.weapon = weapon; rig.bow = bow; rig.arrow = arrow; rig.lineW = lineW;
+    rig.weapon = weapon; rig.bow = bow; rig.arrow = arrow; rig.lineW = lineW; rig.photo = !!s.photo;
     const o = out[id] = { rig, acts: {} };
     // 第一輪只量每一幀的範圍（不留圖，省記憶體；手機上幾十張大圖會撐爆）
     for (const a of acts) {
