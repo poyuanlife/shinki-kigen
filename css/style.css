@@ -394,3 +394,8 @@ html.touch .spItem { padding: 10px; font-size: 15px; }
 #photoPanel .phTipCols .ok li::before { content: "✓ "; color: #8fe08f; font-weight: bold; }
 #photoPanel .phTipCols .ng li::before { content: "✗ "; color: #ff8a7a; font-weight: bold; }
 #photoPanel .phTipCols b { color: #ffe9a0; }
+
+/* 照片主角：檢查用圖片 */
+#photoPanel .phDebugOut { margin-bottom: 8px; font-size: 13px; color: #d9ccb0; }
+#photoPanel .phDebugOut.hidden { display: none; }
+#photoPanel .phDebugOut img { display: block; max-width: 100%; margin-top: 6px; border-radius: 6px; }

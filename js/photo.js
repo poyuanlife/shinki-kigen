@@ -105,9 +105,11 @@ const PhotoHero = (() => {
         </div>
         <div class="phStatus" id="phStatus"></div>
         <div class="phPreview hidden" id="phPreview"></div>
+        <div class="phDebugOut hidden" id="phDebugOut"></div>
         <div class="phActions">
           <button class="big" id="phMake" disabled>產生角色</button>
           <button class="big hidden" id="phUse">使用這個角色</button>
+          <button class="hidden" id="phDebug">儲存檢查用圖片</button>
           <button id="phReset" class="hidden">還原原本的外觀</button>
         </div>
       </div>`;
@@ -119,6 +121,7 @@ const PhotoHero = (() => {
     }
     $('phMake').onclick = make;
     $('phUse').onclick = use;
+    $('phDebug').onclick = debugImage;
     $('phReset').onclick = reset;
   }
   const status = (t, warn) => { const s = $('phStatus'); s.textContent = t || ''; s.classList.toggle('warn', !!warn); };
@@ -171,7 +174,7 @@ const PhotoHero = (() => {
       made = await w.makeCharacter({ front: cut.front, side: cut.side, back: cut.back }, t => status(t));
       status(made.warn && made.warn.length ? made.warn.join(' ') : '完成！下面是預覽，滿意的話按「使用這個角色」。');
       showPreview(made);
-      $('phUse').classList.remove('hidden');
+      $('phUse').classList.remove('hidden'); $('phDebug').classList.remove('hidden');
     } catch (e) { status('產生失敗：' + (e && e.message || e), true); }
     busy = false; $('phMake').disabled = false;
   }
@@ -202,6 +205,69 @@ const PhotoHero = (() => {
         x.drawImage(v.im, v.d * v.a.w, fr * v.a.h, v.a.w, v.a.h, 0, 0, v.c.width, v.c.height);
       }
     }, 120);
+  }
+
+  // ---------- 檢查用圖片：去背結果 + 偵測到的關節 + 產生的動作，組成一張圖給開發者看 ----------
+  // MediaPipe 身體點的連線（肩、手、髖、腳）
+  const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [27, 29], [29, 31], [27, 31], [24, 26], [26, 28], [28, 30], [30, 32], [28, 32]];
+  const loadImg = blob => new Promise((ok, fail) => { const im = new Image(); im.onload = () => ok(im); im.onerror = fail; im.src = URL.createObjectURL(blob); });
+  async function debugImage() {
+    if (busy) return;
+    busy = true; status('製作檢查用圖片中…');
+    try {
+      const PH = 420, pad = 12, parts = [];
+      // 第一列：三張去背照片 + 關節（左＝本人左邊的點畫藍色、右＝紅色）
+      const cuts = [];
+      for (const s of SLOTS) {
+        const c = cut[s.id]; if (!c) continue;
+        const im = await loadImg(c.blob), k = PH / im.height, cw = Math.round(im.width * k);
+        cuts.push({ s, c, im, k, cw });
+      }
+      const sheets = [];
+      if (made) for (const id of ['walk', 'run', 'attack', 'hit', 'dead']) if (made.sheets[id]) sheets.push({ id, im: await loadImg(made.sheets[id]) });
+      const W = Math.max(cuts.reduce((a, v) => a + v.cw + pad, pad), ...sheets.map(v => v.im.width + pad * 2), 600);
+      const H = 90 + PH + pad * 2 + sheets.reduce((a, v) => a + v.im.height + 30, 0);
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+      const x = cv.getContext('2d');
+      x.fillStyle = '#20252b'; x.fillRect(0, 0, W, H);
+      x.fillStyle = '#fff'; x.font = '15px sans-serif';
+      x.fillText('照片主角 檢查用圖片　' + new Date().toLocaleString(), pad, 22);
+      x.font = '11px monospace'; x.fillStyle = '#bcd';
+      x.fillText(navigator.userAgent.slice(0, 150), pad, 40);
+      x.fillText('照片：' + cuts.map(v => `${v.s.name} ${v.c.w}x${v.c.h}${v.c.facing && v.s.id === 'side' ? ' 朝' + (v.c.facing === 'left' ? '左' : '右') : ''}${v.c.feetCut ? ' 腳被切到' : ''}`).join('，'), pad, 56);
+      if (made) x.fillText('動作：' + Object.entries(made.meta.anims).map(([k, a]) => `${k} ${a.w}x${a.h}×${a.frames}`).join('，'), pad, 72);
+      let cx = pad;
+      for (const v of cuts) {
+        const y0 = 90;
+        x.fillStyle = '#6f9a45'; x.fillRect(cx, y0, v.cw, PH);
+        x.drawImage(v.im, cx, y0, v.cw, PH);
+        const P = i => v.c.lm && v.c.lm[i] ? [cx + v.c.lm[i].x * v.k, y0 + v.c.lm[i].y * v.k] : null;
+        x.lineWidth = 2;
+        for (const [a, b] of BONES) {
+          const pa = P(a), pb = P(b); if (!pa || !pb) continue;
+          x.strokeStyle = a % 2 ? 'rgba(80,160,255,.9)' : 'rgba(255,90,90,.9)'; x.beginPath(); x.moveTo(...pa); x.lineTo(...pb); x.stroke();
+        }
+        if (v.c.lm) v.c.lm.forEach((p, i) => { if (i < 11 && i !== 0) return; const q = P(i); x.fillStyle = i === 0 ? '#ff0' : i % 2 ? '#5af' : '#f55'; x.fillRect(q[0] - 3, q[1] - 3, 6, 6); });
+        x.fillStyle = '#fff'; x.font = '13px sans-serif'; x.fillText(v.s.name, cx + 4, y0 + 16);
+        cx += v.cw + pad;
+      }
+      // 下面：每個動作的精靈圖（直欄 = 下、上、左、右；橫列 = 幀）
+      let y = 90 + PH + pad;
+      for (const v of sheets) {
+        x.fillStyle = '#fff'; x.font = '13px sans-serif'; x.fillText(v.id, pad, y + 14);
+        x.fillStyle = '#6f9a45'; x.fillRect(pad, y + 20, v.im.width, v.im.height); x.drawImage(v.im, pad, y + 20);
+        y += v.im.height + 30;
+      }
+      const blob = await new Promise(ok => cv.toBlob(ok, 'image/png'));
+      const url = URL.createObjectURL(blob), name = 'photo-hero-check-' + Date.now() + '.png';
+      // 下載；iPhone 可能不會自動下載，所以也顯示在畫面上（長按儲存）
+      const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      const out = $('phDebugOut'); out.classList.remove('hidden');
+      out.innerHTML = '<div>如果沒有自動下載，<b>長按下面的圖片</b>選「儲存影像」，再傳給開發者。</div>';
+      const im = new Image(); im.src = url; out.appendChild(im);
+      status('檢查用圖片已產生（' + Math.round(blob.size / 1024) + ' KB）。');
+    } catch (e) { status('製作失敗：' + (e && e.message || e), true); }
+    busy = false;
   }
 
   async function use() {
