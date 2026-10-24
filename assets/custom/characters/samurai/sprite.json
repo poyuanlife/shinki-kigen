@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "tool": "圖片批次轉換",
+  "dirs": [
+    "down",
+    "up",
+    "left",
+    "right"
+  ],
+  "cell": [
+    48,
+    64
+  ],
+  "weapon": "sword",
+  "anims": {
+    "walk": {
+      "file": "Walk.png",
+      "w": 48,
+      "h": 64,
+      "frames": 6,
+      "ox": 24,
+      "oy": 63,
+      "ms": 120
+    },
+    "idle": {
+      "file": "Idle.png",
+      "w": 48,
+      "h": 64,
+      "frames": 4,
+      "ox": 24,
+      "oy": 63,
+      "ms": 260
+    },
+    "run": {
+      "file": "Run.png",
+      "w": 48,
+      "h": 64,
+      "frames": 6,
+      "ox": 24,
+      "oy": 63,
+      "ms": 85
+    },
+    "attack": {
+      "file": "Attack.png",
+      "w": 92,
+      "h": 75,
+      "frames": 6,
+      "ox": 46,
+      "oy": 74,
+      "ms": 60
+    },
+    "hit": {
+      "file": "Hit.png",
+      "w": 50,
+      "h": 64,
+      "frames": 3,
+      "ox": 25,
+      "oy": 63,
+      "ms": 60
+    },
+    "dead": {
+      "file": "Dead.png",
+      "w": 58,
+      "h": 64,
+      "frames": 4,
+      "ox": 29,
+      "oy": 63,
+      "ms": 160
+    }
+  }
+}

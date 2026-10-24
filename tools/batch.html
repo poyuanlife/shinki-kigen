@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>圖片批次轉換</title>
+<link rel="icon" href="batch-icon.png">
+<style>
+:root {
+  --bg: #1b1d24; --panel: #242733; --panel2: #2d3140; --line: #3a3f52;
+  --text: #e6e8ef; --dim: #9aa0b4; --accent: #e0a040; --accent2: #f2c471; --warn: #ff8a6a; --ok: #7fd18b;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.6 "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+}
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 18px; margin: 0; color: var(--accent2); }
+header .sp { flex: 1; }
+header a { color: var(--dim); }
+main { max-width: 1100px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+button, select, input[type=number], input[type=text] {
+  font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+}
+button { padding: 6px 14px; cursor: pointer; }
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); color: #1b1d24; border-color: var(--accent); font-weight: bold; }
+button.big { font-size: 17px; padding: 10px 28px; }
+select, input[type=number], input[type=text] { padding: 4px 6px; }
+input[type=number] { width: 70px; }
+input[type=color] { width: 40px; height: 28px; padding: 0 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); }
+input[type=range] { flex: 1; min-width: 80px; accent-color: var(--accent); }
+code, pre { font-family: Consolas, "Courier New", monospace; }
+code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+[hidden] { display: none !important; }
+
+.step { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; }
+.step > h2 { margin: 0 0 8px; font-size: 16px; color: var(--accent2); display: flex; align-items: center; gap: 10px; }
+.step > h2 .n { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); color: #1b1d24; display: inline-flex; align-items: center; justify-content: center; font-size: 15px; flex: none; }
+.step p { margin: 6px 0; }
+.step ol, .step ul { margin: 6px 0; padding-left: 22px; }
+.step li { margin: 3px 0; }
+.dim { color: var(--dim); }
+.warn { color: var(--warn); }
+.ok { color: var(--ok); }
+.tree { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; overflow-x: auto; font-size: 13px; line-height: 1.55; margin: 8px 0; white-space: pre; }
+.tree b { color: var(--accent2); font-weight: normal; }
+.tree i { color: var(--dim); font-style: normal; }
+.folders { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; margin: 8px 0 12px; }
+.frow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 6px 0 2px; }
+.flabel { width: 84px; flex: none; color: var(--accent2); }
+.fpath { flex: 1; min-width: 200px; background: var(--bg); padding: 5px 8px; word-break: break-all; }
+.frow input[type=text] { flex: 1; min-width: 200px; }
+.gboxes { display: flex; flex-direction: column; gap: 12px; }
+.box { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.box h3 { margin: 0 0 6px; font-size: 15px; color: var(--accent2); }
+.gwrap { display: grid; grid-template-columns: minmax(280px, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .gwrap { grid-template-columns: minmax(0, 1fr); } }
+.fhead { margin: 12px 0 2px; color: var(--accent2); font-size: 13px; border-top: 1px solid var(--line); padding-top: 8px; }
+.pvcol { min-width: 0; }
+.pvpick { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pvpick select { flex: 1; min-width: 140px; max-width: 360px; }
+.pvarea { background: var(--bg); border: 2px dashed var(--line); border-radius: 8px; padding: 10px; min-height: 200px; margin-top: 8px; }
+.pvarea.over { border-color: var(--accent); }
+.pvmsg { font-size: 13px; }
+.pvsub { font-size: 12px; color: var(--dim); margin: 10px 0 4px; }
+.pvrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.pvrow figure { margin: 0; text-align: center; min-width: 0; }
+.pvrow figcaption { font-size: 12px; color: var(--dim); margin-top: 2px; }
+.pvout canvas { image-rendering: pixelated; display: block; max-width: 100%; }
+.pvout canvas.orig { image-rendering: auto; }
+.stagebox { padding: 6px; border-radius: 6px; display: inline-block; max-width: 100%; }
+.checker { background-color: #c8c8c8; background-image:
+  linear-gradient(45deg, #9e9e9e 25%, transparent 25%), linear-gradient(-45deg, #9e9e9e 25%, transparent 25%),
+  linear-gradient(45deg, transparent 75%, #9e9e9e 75%), linear-gradient(-45deg, transparent 75%, #9e9e9e 75%);
+  background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+.bg-grass { background: #6f9a45; } .bg-camp { background: #b98f5c; } .bg-black { background: #111; } .bg-white { background: #fff; }
+.row { display: flex; align-items: center; gap: 8px; margin: 7px 0; flex-wrap: wrap; }
+.row > span:first-child { width: 96px; flex: none; color: var(--dim); }
+.row output { width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.row select { flex: 1; min-width: 0; }
+.row.chk { flex-wrap: nowrap; align-items: flex-start; }
+.row.chk > span { width: auto !important; color: var(--text) !important; }
+.row.chk input { margin-top: 5px; }
+.hint { color: var(--dim); font-size: 12px; margin: 2px 0 6px; }
+details summary { cursor: pointer; color: var(--accent2); }
+.bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+
+.list { width: 100%; border-collapse: collapse; margin: 6px 0 12px; }
+.list th, .list td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: middle; }
+.list th { color: var(--dim); font-weight: normal; font-size: 12px; }
+.list td.thumbs { white-space: nowrap; }
+.list img { height: 44px; max-width: 70px; object-fit: contain; background: #c8c8c8; border-radius: 3px; margin-right: 4px; vertical-align: middle; }
+.tag { display: inline-block; font-size: 11px; padding: 0 6px; border-radius: 4px; background: var(--line); color: var(--dim); margin-left: 6px; }
+.tag.done { background: #2f4a35; color: var(--ok); }
+.grp-title { margin: 12px 0 2px; font-size: 14px; color: var(--accent2); }
+
+.progress { height: 12px; background: var(--panel2); border-radius: 6px; overflow: hidden; border: 1px solid var(--line); flex: 1; min-width: 160px; }
+.progress > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+#log { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; max-height: 220px; overflow-y: auto; font-size: 13px; margin-top: 8px; }
+#log div { margin: 2px 0; }
+.results { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin-top: 10px; }
+.res { background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.res.fail { border-color: var(--warn); }
+.res h4 { margin: 0 0 6px; font-size: 14px; display: flex; gap: 6px; align-items: center; }
+.res .pv { background: #6f9a45; border-radius: 6px; padding: 6px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.res canvas { image-rendering: pixelated; display: block; }
+.res .msg { font-size: 12px; margin-top: 4px; }
+.res .path { font-size: 11px; color: var(--dim); margin-top: 4px; word-break: break-all; }
+#noServer { position: sticky; top: 8px; z-index: 5; box-shadow: 0 6px 20px rgba(0,0,0,.5); background: #4a2a24; border: 1px solid var(--warn); border-radius: 10px; padding: 14px 18px; }
+#noServer h2 { margin: 0 0 6px; font-size: 16px; color: var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <h1>圖片批次轉換</h1>
+  <span class="dim">人物、怪物的三視圖 → 遊戲用走路動畫；場景圖 → 像素風</span>
+</header>
+
+<main>
+<section id="noServer" hidden>
+  <h2>請用「圖片批次轉換」程式開啟</h2>
+  <p>現在是直接打開網頁檔，讀不到你電腦裡的資料夾，所以「打開原圖資料夾」、「重新掃描」、「開始批次轉換」都不能用（步驟 2 的預覽用「從電腦選圖」還是可以試）。請這樣開啟：</p>
+  <ol>
+    <li>關閉這個分頁。</li>
+    <li>雙擊桌面上的「圖片批次轉換」捷徑，或遊戲資料夾 <code>D:\RPG</code> 裡的 <code>圖片批次轉換.exe</code>。</li>
+  </ol>
+</section>
+
+<!-- 步驟 1 -->
+<section class="step">
+  <h2><span class="n">1</span>選擇資料夾，把圖放進去</h2>
+  <div class="folders">
+    <div class="frow">
+      <span class="flabel">原圖資料夾</span>
+      <code class="fpath" id="srcPath">（還沒選）</code>
+      <button class="primary" id="pickSrc">選擇資料夾…</button>
+      <button id="openSrc">打開</button>
+    </div>
+    <div class="hint">放人物、怪物、場景原圖的地方。可以選任何位置（例如雲端硬碟裡的資料夾），換電腦時選一次就好。轉換設定也會存在這裡面（<code>batch-settings.json</code>）。</div>
+    <div class="frow">
+      <span class="flabel">輸出資料夾</span>
+      <code class="fpath" id="outPath">（還沒選）</code>
+      <button id="pickOut">選擇資料夾…</button>
+      <button id="openOut">打開</button>
+      <button id="autoOut" title="依原圖資料夾自動決定">自動</button>
+    </div>
+    <div class="hint">轉好的圖存在這裡。選「自動」時：原圖資料夾旁邊有遊戲的 <code>assets</code> 資料夾，就存到 <code>assets\custom</code>；沒有的話存到原圖資料夾旁邊的「轉換結果」。</div>
+    <details>
+      <summary>手動輸入路徑</summary>
+      <div class="frow" style="margin-top:6px"><span class="flabel">原圖資料夾</span><input type="text" id="srcInput" placeholder="例如 D:\RPG\art-src"><button id="srcApply">套用</button></div>
+      <div class="frow"><span class="flabel">輸出資料夾</span><input type="text" id="outInput" placeholder="例如 D:\RPG\assets\custom"><button id="outApply">套用</button></div>
+    </details>
+    <div id="folderMsg" class="hint" style="font-size:13px"></div>
+  </div>
+  <p>選好原圖資料夾後，裡面會自動建立 <code>characters</code>、<code>monsters</code>、<code>scenes</code> 三個資料夾。按「打開」照這個方式放圖：</p>
+<div class="tree">原圖資料夾\
+├─ <b>characters\</b>          <i>← 人物：每個角色開一個資料夾</i>
+│   ├─ <b>knight\</b>           <i>← 資料夾名稱 = 轉好之後的檔名，請用英文</i>
+│   │    front.png   side.png   back.png   <i>← 三張分開的圖</i>
+│   └─ <b>mage\</b>
+│        sheet.png                   <i>← 或是一張「三視圖」（三個角度畫在同一張）</i>
+├─ <b>monsters\</b>            <i>← 怪物：放法跟人物一樣</i>
+│   └─ <b>slime\</b>
+│        front.png                   <i>← 怪物只有正面也可以，其他方向會用正面代替</i>
+└─ <b>scenes\</b>              <i>← 場景：圖直接放進來，不用開資料夾</i>
+     forest.png   town.png</div>
+  <p><b>放圖的規則：</b></p>
+  <ul>
+    <li><b>三張分開的圖</b>：檔名要包含 <code>front</code>（正面）、<code>side</code>（側面）、<code>back</code>（背面），例如 <code>knight_front.png</code>。用中文「正面、側面、背面」也可以。</li>
+    <li><b>一張三視圖</b>：資料夾裡只放這一張就好（檔名不限）。三個角度要由左到右排好、中間留空隙，排列順序在步驟 2 設定。</li>
+    <li><b>背景</b>：用透明背景或單一純色（例如全白）。背景有漸層、陰影或花紋會去不乾淨。</li>
+    <li><b>側面圖</b>：所有角色的側面要朝同一邊（都朝左或都朝右），在步驟 2 設定。</li>
+    <li>可以放 PNG、JPG、WebP。圖越大越清楚，但每張最好不要超過 2000 像素寬。</li>
+    <li><span class="dim">（選用）也可以加跨步圖 <code>front_step.png</code>、<code>side_step.png</code>、<code>back_step.png</code>，走路動畫會更自然。</span></li>
+  </ul>
+  <div class="bar"><span class="dim" id="openMsg">放好之後回到這個視窗，繼續步驟 2。</span></div>
+</section>
+
+<!-- 步驟 2 -->
+<section class="step">
+  <h2><span class="n">2</span>選擇轉換設定</h2>
+  <p>這裡的設定是每一類的<b>預設值</b>，會套用到同一類的所有圖片，下次打開會記住。<br>
+  右邊選一張範例圖（從原圖資料夾選，或按「從電腦選圖」、把圖拖進預覽框），調整左邊的設定時，右邊會立刻顯示轉出來的樣子。調到滿意就好，不用存檔。</p>
+  <div class="bar"><span class="dim">預覽背景</span><select id="pvBg"></select></div>
+  <div class="gboxes">
+    <div class="box" data-group="characters"><h3>人物</h3><div class="gwrap"><div class="form"></div><div class="pvcol"></div></div></div>
+    <div class="box" data-group="monsters"><h3>怪物</h3><div class="gwrap"><div class="form"></div><div class="pvcol"></div></div></div>
+    <div class="box" data-group="scenes"><h3>場景</h3><div class="gwrap"><div class="form"></div><div class="pvcol"></div></div></div>
+  </div>
+  <details style="margin-top:10px">
+    <summary>進階：個別角色用不同設定</summary>
+    <p class="hint" style="font-size:13px">在角色資料夾裡放一個 <code>settings.json</code>，只寫要改的項目，其他照上面的設定。場景則是放一個跟圖同名的 json，例如 <code>forest.json</code>。例如某隻大型怪物要 32×32、側面朝右：</p>
+    <div class="tree">{ "w": 32, "h": 32, "sideFacing": "right" }</div>
+    <p class="hint" style="font-size:13px">人物、怪物可以用的項目：<code>w</code>、<code>h</code>（每格大小）、<code>dirCount</code>（"4" 或 "8"）、<code>sideFacing</code>（"left" 或 "right"）、<code>sheetOrder</code>（例如 "front,side,back"）、<code>colors</code>、<code>palette</code>（"game"、"auto"…）、<code>outline</code>（"outer"、"inner"、"none"）、<code>bgMode</code>（"auto"、"manual"、"off"）、<code>bgManual</code>（例如 "#ffffff"）、<code>bgTol</code>、<code>legRatio</code>（腳的長度 %）、<code>lift</code>、<code>bob</code>、<code>stride</code>。<br>
+    場景可以用的項目：<code>outW</code>（輸出寬度）、<code>scale</code>、<code>sizeBy</code>（"width" 或 "scale"）、<code>colors</code>、<code>palette</code>、<code>dither</code>（"none"、"bayer"、"fs"）。</p>
+  </details>
+</section>
+
+<!-- 步驟 3 -->
+<section class="step">
+  <h2><span class="n">3</span>檢查找到的圖</h2>
+  <p>按「重新掃描」讀取資料夾。確認每一列的判斷都正確；有 <span class="warn">⚠</span> 的那列要先照提示修正（改檔名或補圖），再按一次重新掃描。不想轉換的，把前面的勾勾取消。</p>
+  <div class="bar">
+    <button class="primary" id="btnScan">重新掃描</button>
+    <label class="row chk" style="margin:0"><input type="checkbox" id="onlyNew"><span>只轉新的（已經轉過的不重做）</span></label>
+    <span id="scanMsg" class="dim"></span>
+  </div>
+  <div id="scanList"></div>
+</section>
+
+<!-- 步驟 4 -->
+<section class="step">
+  <h2><span class="n">4</span>開始轉換</h2>
+  <p>按下開始後，會一個一個轉換，轉好的圖存進步驟 1 的輸出資料夾 <code class="outText">（還沒選）</code>：</p>
+  <ul class="dim">
+    <li>人物：<code>輸出資料夾\characters\角色名\Walk.png</code>（走路動畫）和 <code>Idle.png</code>（站姿）</li>
+    <li>怪物：<code>輸出資料夾\monsters\怪物名\Walk.png</code> 和 <code>Idle.png</code></li>
+    <li>場景：<code>輸出資料夾\scenes\場景名.png</code></li>
+  </ul>
+  <p class="dim">同名的舊檔會被覆蓋。轉換時可以先看下面的結果，不滿意就回步驟 2 調整，再轉一次。</p>
+  <div class="bar">
+    <button class="primary big" id="btnStart" disabled>開始批次轉換</button>
+    <button id="btnStop" hidden>停止</button>
+    <div class="progress"><div id="prog"></div></div>
+    <span id="progMsg" class="dim"></span>
+  </div>
+  <div id="startMsg" class="hint" style="font-size:13px"></div>
+  <div class="bar" id="doneBar" hidden>
+    <button id="btnOpenOut">打開輸出資料夾</button>
+    <span id="doneMsg"></span>
+  </div>
+  <div id="log" hidden></div>
+  <div class="results" id="results"></div>
+</section>
+</main>
+
+<script src="tool-nav.js"></script>
+<script src="pixel-core.js"></script>
+<script src="sprite-core.js"></script>
+<script src="rig-core.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 存不了就略過 */ } },
+};
+const GROUPS = {
+  characters: { label: '人物', kind: 'sprite' },
+  monsters: { label: '怪物', kind: 'sprite' },
+  scenes: { label: '場景', kind: 'scene' },
+};
+
+// ---------- 設定 ----------
+// mode：rig 骨架（人物預設）、pixel 簡易（怪物預設，史萊姆這類沒有手腳的也能用）
+const spriteDefaults = (mode = 'pixel') => Object.assign({}, RIG_DEFAULTS, {
+  size: '16x16', w: 16, h: 16, dirCount: '4', sideFacing: 'left', sheetOrder: 'front,side,back', resample: 'mode', diagSide: 25,
+  bgMode: 'auto', bgManual: '#ffffff', bgTol: 15, bgFlood: true, palette: 'game', colors: 16, outline: 'outer', cleanFloat: true,
+  legRatio: 30, legSplit: 0,
+}, animDefaults(16), { animMode: mode });
+const sceneDefaults = () => ({ sizeBy: 'width', outW: 320, scale: 4, resample: 'average', palette: 'game', colors: 32, dither: 'none', ditherStr: 40, cleanFloat: true });
+const DEFAULT_CFG = () => ({ characters: spriteDefaults('rig'), monsters: spriteDefaults('pixel'), scenes: sceneDefaults() });
+const cfg = DEFAULT_CFG();
+{
+  const saved = store.get('batch.settings') || {};
+  for (const g in cfg) Object.assign(cfg[g], saved[g] || {});
+}
+// 設定同時存在瀏覽器和 原圖資料夾/batch-settings.json（後者電腦重灌也不會不見）
+let saveTimer = 0;
+const saveCfg = () => {
+  store.set('batch.settings', cfg);
+  if (!location.protocol.startsWith('http')) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => fetch('/api/settings', { method: 'POST', body: JSON.stringify(cfg) }).catch(() => {}), 400);
+};
+async function loadCfgFile() {
+  if (!location.protocol.startsWith('http')) return;
+  try {
+    const saved = await (await fetch('/api/settings')).json();
+    if (!saved || !Object.keys(saved).length) { saveCfg(); return; } // 第一次：把目前的設定存成檔案
+    for (const g in cfg) if (saved[g]) Object.assign(cfg[g], saved[g]);
+    store.set('batch.settings', cfg);
+    for (const g in cfg) { fillForm(g); schedulePreview(g); }
+    renderScan();
+  } catch (e) { /* 讀不到就用瀏覽器裡的設定 */ }
+}
+
+const palOptions = Object.entries(PALETTES).filter(([k]) => k !== 'none' && k !== 'custom').map(([k, p]) => [k, p.label]);
+const SPRITE_FIELDS = [
+  { k: 'size', label: '每格大小', opts: SIZES.map(p => [p.id, p.label]) },
+  { k: 'wh', label: '寬 × 高', custom: true, show: s => s.size === 'custom' },
+  { k: 'dirCount', label: '方向數', opts: [['4', '4 方向（跟遊戲現有角色一樣）'], ['8', '8 方向（斜向自動產生）']] },
+  { k: 'sideFacing', label: '側面圖朝向', opts: [['left', '朝左'], ['right', '朝右']] },
+  { k: 'sheetOrder', label: '三視圖順序', opts: [
+    ['front,side,back', '正面、側面、背面'], ['front,back,side', '正面、背面、側面'], ['side,front,back', '側面、正面、背面'],
+    ['back,side,front', '背面、側面、正面'], ['front,frontDiag,side,back', '正面、斜前方、側面、背面（四視圖）'],
+    ['front,frontDiag,side,backDiag,back', '正面、斜前方、側面、斜後方、背面（五視圖）']],
+    hint: '只有「一張三視圖」才會用到：由左到右是哪幾個角度。' },
+  { k: 'diagSide', label: '斜向側面比重', type: 'range', min: 0, max: 100, show: s => s.dirCount === '8',
+    hint: '自動產生斜向圖時，側面圖用多少。臉上出現多餘的眼睛就調低；側面輪廓（頭髮、鼻子）不見了就調高。' },
+  { k: 'resample', label: '取色方式', opts: [['mode', '取最多的顏色（推薦）'], ['average', '平均顏色（較平滑）'], ['nearest', '最近鄰（銳利）']] },
+  { head: '去背' },
+  { k: 'bgMode', label: '背景', opts: [['auto', '自動偵測背景色'], ['manual', '手動指定背景色'], ['off', '不去背（本來就是透明背景）']] },
+  { k: 'bgManual', label: '背景色', type: 'color', show: s => s.bgMode === 'manual' },
+  { k: 'bgTol', label: '去背容差', type: 'range', min: 0, max: 100, show: s => s.bgMode !== 'off', hint: '背景沒去乾淨就調高；角色身上的顏色被挖掉就調低。' },
+  { k: 'bgFlood', label: '只移除跟邊緣相連的背景（角色身上跟背景同色的地方會保留）', type: 'check', show: s => s.bgMode !== 'off' },
+  { head: '顏色與外框' },
+  { k: 'palette', label: '調色盤', opts: palOptions },
+  { k: 'colors', label: '最多色數', type: 'range', min: 2, max: 64 },
+  { k: 'outline', label: '外框', opts: [['outer', '外側加 1px 外框（跟遊戲角色一樣）'], ['inner', '內側描邊'], ['none', '無']] },
+  { k: 'cleanFloat', label: '移除孤立的單顆像素', type: 'check' },
+  { head: '動畫' },
+  { k: 'animMode', label: '做法', opts: [['rig', '骨架（關節擺動作，可加跑步、攻擊等）'], ['pixel', '簡易（只移動腳的像素）']],
+    hint: '骨架適合有手有腳的人形角色；史萊姆這類沒有手腳的怪物請用簡易。骨架的關節點會自動偵測，要自己指定請用「精靈圖產生器」的「複製關節點」，存成角色資料夾裡的 settings.json。' },
+  { k: 'rigFrames', label: '走路幀數', opts: [['4', '4 幀'], ['6', '6 幀'], ['8', '8 幀']], show: s => s.animMode === 'rig' },
+  { k: 'idleFrames', label: '待機', opts: [['1', '1 幀（不動）'], ['4', '4 幀（呼吸）']], show: s => s.animMode === 'rig' },
+  { k: 'actRun', label: '跑步（Run.png）', type: 'check', show: s => s.animMode === 'rig' },
+  { k: 'actAtk', label: '揮刀攻擊（Attack.png，資料夾裡要有武器圖 weapon.png）', type: 'check', show: s => s.animMode === 'rig' },
+  { k: 'weaponLen', label: '刀的長度', type: 'range', min: 20, max: 120, unit: '%', show: s => s.animMode === 'rig' && s.actAtk },
+  { k: 'actHit', label: '受傷（Hit.png）', type: 'check', show: s => s.animMode === 'rig' },
+  { k: 'actDead', label: '倒下（Dead.png）', type: 'check', show: s => s.animMode === 'rig' },
+  { k: 'chibiOn', label: '改成 Q 版 3 頭身（原圖已經是 Q 版就不要勾）', type: 'check', show: s => s.animMode === 'rig' },
+  { k: 'legRatio', label: '腳的長度', type: 'range', min: 10, max: 60, unit: '%', show: s => s.animMode !== 'rig', hint: '身高最下面多少是腳。最好剛好到腰帶或衣服下緣，走路才自然。' },
+  { k: 'legSplit', label: '左右腳分界', type: 'range', min: -6, max: 6, unit: 'px', show: s => s.animMode !== 'rig' },
+  { k: 'lift', label: '抬腳高度', type: 'range', min: 0, max: 12, unit: 'px', show: s => s.animMode !== 'rig' },
+  { k: 'bob', label: '身體起伏', type: 'range', min: 0, max: 6, unit: 'px', show: s => s.animMode !== 'rig' },
+  { k: 'stride', label: '側面跨步', type: 'range', min: 0, max: 12, unit: 'px', show: s => s.animMode !== 'rig' },
+];
+const SCENE_FIELDS = [
+  { k: 'sizeBy', label: '大小', opts: [['width', '指定寬度（高度依比例）'], ['scale', '依倍率縮小']] },
+  { k: 'outW', label: '輸出寬度', type: 'number', min: 16, max: 2048, unit: 'px', show: s => s.sizeBy === 'width' },
+  { k: 'scale', label: '縮小倍率', type: 'range', min: 2, max: 32, unit: '倍', show: s => s.sizeBy === 'scale' },
+  { k: 'resample', label: '取色方式', opts: [['average', '平均顏色（場景推薦）'], ['mode', '取最多的顏色'], ['nearest', '最近鄰（銳利）']] },
+  { k: 'palette', label: '調色盤', opts: palOptions },
+  { k: 'colors', label: '最多色數', type: 'range', min: 2, max: 64 },
+  { k: 'dither', label: '抖色', opts: [['none', '不抖色'], ['bayer', '格狀抖色（復古感）'], ['fs', '擴散抖色（較細緻）']] },
+  { k: 'ditherStr', label: '抖色強度', type: 'range', min: 0, max: 100, show: s => s.dither !== 'none' },
+  { k: 'cleanFloat', label: '移除孤立的單顆像素', type: 'check' },
+];
+const fieldsOf = g => GROUPS[g].kind === 'scene' ? SCENE_FIELDS : SPRITE_FIELDS;
+
+function buildForms() {
+  for (const box of document.querySelectorAll('.box[data-group]')) {
+    const g = box.dataset.group, html = [];
+    for (const f of fieldsOf(g)) {
+      if (f.head) { html.push(`<div class="fhead">${f.head}</div>`); if (f.hint) html.push(`<div class="hint">${f.hint}</div>`); continue; }
+      let ctl;
+      if (f.custom) ctl = `<input type="number" data-k="w" min="8" max="256"> × <input type="number" data-k="h" min="8" max="256"> px`;
+      else if (f.opts) ctl = `<select data-k="${f.k}">${f.opts.map(([v, l]) => `<option value="${v}">${esc(l)}</option>`).join('')}</select>`;
+      else if (f.type === 'range') ctl = `<input type="range" data-k="${f.k}" min="${f.min}" max="${f.max}"><output></output>${f.unit || ''}`;
+      else if (f.type === 'number') ctl = `<input type="number" data-k="${f.k}" min="${f.min}" max="${f.max}"> ${f.unit || ''}`;
+      else if (f.type === 'color') ctl = `<input type="color" data-k="${f.k}">`;
+      if (f.type === 'check') html.push(`<label class="row chk" data-f="${f.k}"><input type="checkbox" data-k="${f.k}"><span>${f.label}</span></label>`);
+      else html.push(`<div class="row" data-f="${f.k}"><span>${f.label}</span>${ctl}</div>`);
+      if (f.hint) html.push(`<div class="hint" data-f="${f.k}">${f.hint}</div>`);
+    }
+    html.push(`<div class="bar" style="margin-bottom:0"><button data-reset>還原預設</button></div>`);
+    const form = box.querySelector('.form');
+    form.insertAdjacentHTML('beforeend', html.join(''));
+    form.addEventListener('input', e => {
+      const el = e.target, k = el.dataset.k; if (!k) return;
+      const s = cfg[g];
+      s[k] = el.type === 'checkbox' ? el.checked : (el.type === 'range' || el.type === 'number') ? Number(el.value) || 0 : el.value;
+      if (k === 'size') { const p = SIZES.find(x => x.id === s.size); if (p && p.w) { s.w = p.w; s.h = p.h; } }
+      if (k === 'w' || k === 'h') { const p = SIZES.find(x => x.w === s.w && x.h === s.h); s.size = p ? p.id : 'custom'; }
+      if (GROUPS[g].kind === 'sprite' && (k === 'size' || k === 'h')) Object.assign(s, animDefaults(clamp(s.h | 0, 8, 256)));
+      saveCfg(); fillForm(g); schedulePreview(g);
+      if (k === 'sheetOrder' || k === 'dirCount' || k === 'sizeBy' || k === 'outW' || k === 'scale') renderScan();
+    });
+    box.querySelector('[data-reset]').onclick = () => {
+      Object.assign(cfg[g], GROUPS[g].kind === 'scene' ? sceneDefaults() : spriteDefaults(g === 'characters' ? 'rig' : 'pixel'));
+      saveCfg(); fillForm(g); renderScan(); schedulePreview(g);
+    };
+    fillForm(g);
+  }
+}
+function fillForm(g) {
+  const box = document.querySelector(`.box[data-group="${g}"]`), s = cfg[g];
+  for (const el of box.querySelectorAll('[data-k]')) {
+    const k = el.dataset.k;
+    if (el.type === 'checkbox') el.checked = !!s[k]; else if (document.activeElement !== el || el.type !== 'number') el.value = s[k];
+    if (el.type === 'range') el.nextElementSibling.textContent = el.value;
+  }
+  for (const f of fieldsOf(g)) if (f.show) for (const el of box.querySelectorAll(`[data-f="${f.k}"]`)) el.hidden = !f.show(s);
+}
+
+// 個別設定（settings.json）蓋過全體設定
+function spriteSettings(g, item) {
+  const o = Object.assign({}, item.settings || {});
+  if (o.size) { const p = SIZES.find(x => x.id === o.size); if (p && p.w) { o.w = o.w || p.w; o.h = o.h || p.h; } }
+  for (const k of ['dirCount', 'outlineN']) if (k in o) o[k] = String(o[k]);
+  const base = Object.assign({}, SPRITE_DEFAULTS, RIG_DEFAULTS, cfg[g]);
+  // 個別設定改了大小、但沒指定動畫數值時，動畫用新大小的建議值
+  if (o.h) for (const [k, v] of Object.entries(animDefaults(clamp(o.h | 0, 8, 256)))) if (!(k in o)) base[k] = v;
+  return Object.assign(base, o);
+}
+function sceneSettings(item) { return Object.assign({}, sceneDefaults(), cfg.scenes, item.settings || {}); }
+
+// ---------- 掃描 ----------
+let scanData = null;
+const selected = {}; // `${group}/${name}` → 要不要轉
+const api = (p, opt) => fetch(p, opt).then(async r => { if (!r.ok) throw new Error(await r.text()); return r.json(); });
+const SLOT_NAMES = Object.fromEntries(SLOTS.map(s => [s.id, s.label]));
+const SHEET_NAMES = { front: '正面', back: '背面', side: '側面', frontDiag: '斜前方', backDiag: '斜後方' };
+
+// 依檔名決定怎麼轉：三張分開的圖（views）或一張三視圖（sheet）
+function planSprite(g, item) {
+  const p = { ok: true, warn: [], err: [] }, files = item.files.filter(f => !['weapon', 'ammo'].includes(guessSlot(f)));
+  if (item.settingsError) p.err.push(item.settingsError);
+  p.weapon = item.files.find(f => guessSlot(f) === 'weapon') || null;
+  p.ammo = item.files.find(f => guessSlot(f) === 'ammo') || null;
+  const ss = spriteSettings(g, item), rig = ss.animMode === 'rig';
+  if (p.weapon && !rig) p.warn.push('有武器圖，但「簡易」做法不會用到（改成「骨架」才有攻擊動畫）');
+  if (rig && ss.actAtk && !p.weapon) p.warn.push('沒有武器圖（weapon.png），攻擊動畫只會揮手');
+  if (!files.length) { p.err.push('資料夾裡沒有圖片'); }
+  else if (files.length === 1 && guessSlot(files[0]) !== 'front') {
+    p.mode = 'sheet'; p.sheetFile = files[0];
+    const order = spriteSettings(g, item).sheetOrder.split(',');
+    p.desc = `一張三視圖，由左到右當作「${order.map(o => SHEET_NAMES[o]).join('、')}」`;
+  } else {
+    p.mode = 'views'; p.slots = {};
+    const unknown = [], dup = [];
+    for (const f of files) {
+      const id = guessSlot(f);
+      if (!id) unknown.push(f); else if (p.slots[id]) dup.push(f); else p.slots[id] = f;
+    }
+    if (unknown.length) p.err.push(`認不出這些檔名是哪個角度：${unknown.join('、')}。請在檔名加上 front / side / back（或 正面 / 側面 / 背面）。如果是一張三視圖，資料夾裡只能放它一張。`);
+    if (dup.length) p.err.push(`有重複的角度：${dup.join('、')}`);
+    if (!p.slots.front) p.err.push('缺少正面圖（檔名要有 front 或 正面）');
+    const missing = ['side', 'back'].filter(id => !p.slots[id]);
+    if (p.slots.front && missing.length) p.warn.push(`沒有${missing.map(id => SLOT_NAMES[id]).join('、')}圖，會用正面圖代替`);
+    p.desc = Object.entries(p.slots).map(([id, f]) => `${SLOT_NAMES[id]}：${f}`).join('　');
+  }
+  if (p.err.length) p.ok = false;
+  return p;
+}
+function planScene(item) {
+  const p = { ok: !item.settingsError, warn: [], err: item.settingsError ? [item.settingsError] : [], mode: 'scene' };
+  const s = sceneSettings(item);
+  p.desc = s.sizeBy === 'scale' ? `縮小 ${s.scale} 倍` : `寬度縮成 ${s.outW} px`;
+  return p;
+}
+const planOf = (g, item) => GROUPS[g].kind === 'scene' ? planScene(item) : planSprite(g, item);
+
+const NEED_SERVER = '<span class="warn">⚠ 沒有反應是因為不是用「圖片批次轉換」程式開的。請關閉這個分頁，改用桌面捷徑或 D:\\RPG\\圖片批次轉換.exe 開啟。</span>';
+let serverOk = false;
+// 直接打開網頁檔時：如果批次伺服器已經在跑，自動跳過去
+async function findServer() {
+  for (let p = 8090; p <= 8095; p++) {
+    const origin = `http://localhost:${p}`;
+    if (location.origin === origin) continue;
+    try {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 600);
+      await fetch(origin + '/api/scan', { mode: 'no-cors', signal: ctl.signal });
+      clearTimeout(t);
+      location.href = origin + '/tools/batch.html';
+      return true;
+    } catch (e) { /* 這個埠沒有 */ }
+  }
+  return false;
+}
+function setServer(ok) {
+  serverOk = ok;
+  $('noServer').hidden = ok;
+  if (!ok) { $('openMsg').innerHTML = NEED_SERVER; $('scanMsg').innerHTML = NEED_SERVER; $('scanList').innerHTML = ''; }
+  updateStart();
+}
+const NEED_FOLDER = '<span class="warn">⚠ 還沒選原圖資料夾，請先在步驟 1 按「選擇資料夾…」。</span>';
+async function scan() {
+  $('scanMsg').textContent = '讀取中…';
+  try {
+    const r = await api('/api/scan');
+    setServer(true);
+    if (r.needFolder) {
+      scanData = null;
+      $('scanMsg').innerHTML = NEED_FOLDER; $('scanList').innerHTML = '';
+      $('folderMsg').innerHTML = '<span class="warn">第一次使用：請先選擇原圖資料夾。</span>';
+      for (const g in GROUPS) { samples[g] = samples[g] && samples[g].local ? samples[g] : null; fillSampleSelect(g); runPreview(g); }
+      updateStart();
+      return;
+    }
+    scanData = r;
+  } catch (e) {
+    scanData = null;
+    setServer(false);
+    if (await findServer()) return;
+    $('noServer').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return;
+  }
+  renderScan();
+  refreshSamples();
+}
+function renderScan() {
+  if (!scanData) return;
+  const out = [];
+  let total = 0, okCount = 0;
+  for (const g in GROUPS) {
+    const { items, loose } = scanData.groups[g];
+    out.push(`<div class="grp-title">${GROUPS[g].label}（${items.length}）</div>`);
+    if (loose.length) out.push(`<div class="warn">⚠ 這些圖直接放在 ${g} 裡，沒有放進角色資料夾，不會被轉換：${loose.map(esc).join('、')}。請為每個角色開一個資料夾，把圖搬進去。</div>`);
+    if (!items.length) { out.push(`<div class="dim">還沒有放圖。</div>`); continue; }
+    out.push('<table class="list"><tr><th></th><th>名稱</th><th>原圖</th><th>判斷結果</th></tr>');
+    for (const it of items) {
+      const key = g + '/' + it.name, p = planOf(g, it);
+      total++; if (p.ok) okCount++;
+      if (!(key in selected)) selected[key] = true;
+      const thumbs = it.files.slice(0, 6).map(f => `<img src="/src/${it.dir.split('/').map(encodeURIComponent).join('/')}/${encodeURIComponent(f)}" title="${esc(f)}" loading="lazy">`).join('');
+      const msg = [p.desc ? esc(p.desc) : '', ...p.warn.map(w => `<div class="dim">・${esc(w)}</div>`), ...p.err.map(e => `<div class="warn">⚠ ${esc(e)}</div>`)].join('');
+      out.push(`<tr><td><input type="checkbox" data-key="${esc(key)}" ${p.ok && selected[key] ? 'checked' : ''} ${p.ok ? '' : 'disabled'}></td>
+        <td>${esc(it.name)}${it.done ? '<span class="tag done">已轉過</span>' : ''}${it.settings ? '<span class="tag">有個別設定</span>' : ''}</td>
+        <td class="thumbs">${thumbs}</td><td>${msg}</td></tr>`);
+    }
+    out.push('</table>');
+  }
+  $('scanList').innerHTML = out.join('');
+  const bad = total - okCount;
+  $('scanMsg').innerHTML = !total ? '資料夾裡還沒有圖，請先完成步驟 1。'
+    : `找到 ${total} 個，<span class="ok">${okCount} 個可以轉換</span>${bad ? `，<span class="warn">${bad} 個要先修正</span>` : ''}。`;
+  updateStart();
+}
+$('scanList').addEventListener('change', e => { const k = e.target.dataset.key; if (k) { selected[k] = e.target.checked; updateStart(); } });
+$('onlyNew').checked = !!store.get('batch.onlyNew');
+$('onlyNew').onchange = () => { store.set('batch.onlyNew', $('onlyNew').checked); updateStart(); };
+
+function jobs() {
+  const list = [];
+  if (!scanData) return list;
+  for (const g in GROUPS) for (const it of scanData.groups[g].items) {
+    const p = planOf(g, it);
+    if (!p.ok || !selected[g + '/' + it.name]) continue;
+    if ($('onlyNew').checked && it.done) continue;
+    list.push({ g, item: it, plan: p });
+  }
+  return list;
+}
+let running = false, stopFlag = false;
+function updateStart() {
+  const n = jobs().length;
+  $('btnStart').disabled = running || !n;
+  $('btnStart').textContent = n ? `開始批次轉換（${n} 個）` : '開始批次轉換';
+  // 按鈕不能按時，說明原因
+  let why = '';
+  if (running) why = '';
+  else if (!serverOk) why = NEED_SERVER;
+  else if (!scanData) why = folders && !folders.src ? NEED_FOLDER : '請先在步驟 3 按「重新掃描」。';
+  else if (!n) {
+    const all = Object.values(scanData.groups).reduce((a, g) => a + g.items.length, 0);
+    why = !all ? '⚠ 原圖資料夾裡還沒有圖，請先完成步驟 1，再到步驟 3 按「重新掃描」。'
+      : $('onlyNew').checked ? '⚠ 全部都已經轉過了。要重做的話，把步驟 3 的「只轉新的」取消勾選。'
+      : '⚠ 沒有可以轉換的項目：請在步驟 3 修正有 ⚠ 的項目，或勾選要轉換的項目。';
+  }
+  $('startMsg').innerHTML = why;
+}
+
+// ---------- 轉換 ----------
+function loadImage(dir, file, max) {
+  const url = '/src/' + dir.split('/').map(encodeURIComponent).join('/') + '/' + encodeURIComponent(file);
+  return fetch(url).then(r => { if (!r.ok) throw new Error('讀不到 ' + file); return r.blob(); })
+    .then(blob => new Promise((ok, fail) => loadBlob(blob, img => ok(imageToData(img, max)), () => fail(new Error(`${file} 不是可以讀取的圖片`)))));
+}
+async function saveText(text, path) {
+  const r = await fetch('/api/save?p=' + encodeURIComponent(path), { method: 'POST', body: text });
+  if (!r.ok) throw new Error('存檔失敗：' + await r.text());
+  return (await r.json()).path;
+}
+async function savePng(img, path) {
+  const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+  c.getContext('2d').putImageData(img, 0, 0);
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  const r = await fetch('/api/save?p=' + encodeURIComponent(path), { method: 'POST', body: blob });
+  if (!r.ok) throw new Error('存檔失敗：' + await r.text());
+  return (await r.json()).path; // 完整路徑
+}
+const view = (full, rect) => ({ data: rect ? crop(full, rect.x, rect.y, rect.w, rect.h) : full, bg: autoBg(full) });
+// 產生器的提示是針對它自己的畫面寫的，換成這裡的說法
+const fixMsg = m => m.replace('請在左邊「去背」改成「手動指定背景色」', '請在步驟 2 把「背景」改成「手動指定背景色」').replace('暫時用', '用');
+
+// 依計畫讀圖、切出各角度。load(檔名) → Promise<ImageData>
+async function spriteImages(plan, s, load) {
+  const images = {}, warn = [];
+  if (plan.mode === 'sheet') {
+    const full = await load(plan.sheetFile);
+    const rects = detectFigures(full, s), order = s.sheetOrder.split(',');
+    if (!rects.length) throw new Error('圖裡找不到人物。請確認背景是透明或單一純色。');
+    if (rects.length === 1) {
+      images.front = view(full, rects[0]);
+      warn.push('圖裡只找到 1 個人物，當作正面圖使用');
+    } else {
+      if (rects.length < order.length) warn.push(`只找到 ${rects.length} 個人物（應該有 ${order.length} 個），角度可能對錯。請確認三個角度之間有留空隙，或在步驟 2 檢查三視圖順序。`);
+      if (rects.length > order.length) warn.push(`找到 ${rects.length} 個人物，只用最左邊 ${order.length} 個`);
+      order.forEach((id, i) => { if (rects[i]) images[id] = view(full, rects[i]); });
+      if (!images.front) throw new Error('三視圖順序裡沒有正面，找不到正面圖');
+    }
+  } else {
+    for (const [id, f] of Object.entries(plan.slots)) images[id] = view(await load(f), null);
+  }
+  if (plan.weapon && s.animMode === 'rig' && s.actAtk) images.weapon = view(await load(plan.weapon), null);
+  if (plan.ammo && s.animMode === 'rig' && s.actAtk) images.ammo = view(await load(plan.ammo), null);
+  return { images, warn };
+}
+// 依設定用骨架或簡易做法產生；回傳的 actions 是每個動作一張精靈圖
+function makeSprite(images, s, item, ver) {
+  const res = s.animMode === 'rig' ? generateRigSprite(images, s, item.settings && item.settings.joints, ver) : generateSprite(images, s, ver);
+  if (res.walkSheet && !res.actions) res.actions = [
+    { id: 'walk', label: '走路', name: 'Walk', W: res.W, H: res.H, N: 4, dirs: res.walk, sheet: res.walkSheet },
+    { id: 'idle', label: '待機', name: 'Idle', W: res.W, H: res.H, N: 1, dirs: res.idle.map(f => [f]), sheet: res.idleSheet },
+  ];
+  return res;
+}
+// 給遊戲讀的說明檔：每個動作的檔名、格子大小、幀數、腳底位置、建議速度
+const ANIM_MS = { walk: 120, idle: 260, run: 85, attack: 60, hit: 60, dead: 160 };
+function spriteJson(res, s) {
+  const ol = s.outline === 'outer' ? 1 : 0, anims = {};
+  for (const a of res.actions) anims[a.id] = { file: a.name + '.png', w: a.W, h: a.H, frames: a.N, ox: a.W / 2, oy: a.H - ol, ms: ANIM_MS[a.id] || 150 };
+  const j = { version: 1, tool: '圖片批次轉換', dirs: ['down', 'up', 'left', 'right'], cell: [res.W, res.H], weapon: res.weaponKind || null, anims };
+  if (res.projectile) j.projectile = { file: 'Arrow.png', w: res.projectile.width, h: res.projectile.height }; // 射出去的箭（箭頭朝右）
+  return JSON.stringify(j, null, 2);
+}
+async function doSprite(job) {
+  const { g, item, plan } = job, s = spriteSettings(g, item);
+  const { images, warn } = await spriteImages(plan, s, f => loadImage(item.dir, f, 2048));
+  const res = makeSprite(images, s, item);
+  if (!res.walkSheet) throw new Error(res.warn.map(fixMsg).join(' '));
+  warn.push(...res.warn.map(fixMsg));
+  const dir = `${g}/${item.name}/`, paths = [];
+  for (const a of res.actions) paths.push(await savePng(a.sheet, dir + a.name + '.png'));
+  if (res.projectile) paths.push(await savePng(res.projectile, dir + 'Arrow.png'));
+  paths.push(await saveText(spriteJson(res, s), dir + 'sprite.json'));
+  return { warn, paths, preview: res.actions.map(a => a.sheet), info: `每格 ${res.W}×${res.H}，${res.cols} 方向，${res.actions.map(a => a.label).join('、')}` };
+}
+
+function sceneConvert(full, s) {
+  const W = full.width, H = full.height;
+  const outW = clamp(s.outW | 0, 16, 2048);
+  const ss = Object.assign({ bright: 0, contrast: 0, sat: 0, outline: 'none', limitFixed: true, customPal: '', cleanSpeck: false,
+    fit: 'stretch', anchor: 'center', pad: 0, alphaThr: 128 }, s, {
+    sizeMode: s.sizeBy === 'scale' ? 'scale' : 'fixed', w: outW, h: Math.max(1, Math.round(outW * H / W)), scale: Math.max(1, s.scale | 0),
+  });
+  const g = geometry({ x: 0, y: 0, w: W, h: H }, ss);
+  const out = resample(adjust(full, ss), g, ss.resample);
+  thresholdAlpha(out, ss.alphaThr);
+  const pal = choosePalette(countColors([out]), ss);
+  if (pal) applyPalette(out, pal, ss);
+  if (ss.cleanFloat) cleanup(out, ss);
+  return out;
+}
+async function doScene(job) {
+  const { item } = job, s = sceneSettings(item);
+  const full = await loadImage(item.dir, item.files[0], 4096), out = sceneConvert(full, s);
+  const path = await savePng(out, `scenes/${item.name}.png`);
+  return { warn: [], paths: [path], preview: [out], info: `${out.width}×${out.height}，原圖 ${full.width}×${full.height}` };
+}
+
+// ---------- 步驟 2 的範例預覽 ----------
+const PV_BGS = [['grass', '草地'], ['camp', '泥土'], ['checker', '棋盤格'], ['black', '黑'], ['white', '白']];
+$('pvBg').innerHTML = PV_BGS.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+$('pvBg').value = store.get('batch.pvBg') || 'grass';
+const bgClass = () => 'stagebox ' + ($('pvBg').value === 'checker' ? 'checker' : 'bg-' + $('pvBg').value);
+$('pvBg').onchange = () => {
+  store.set('batch.pvBg', $('pvBg').value);
+  for (const el of document.querySelectorAll('.pvout .stagebox')) el.className = bgClass();
+};
+const pvCol = g => document.querySelector(`.box[data-group="${g}"] .pvcol`);
+const MAX_SRC = g => GROUPS[g].kind === 'scene' ? 4096 : 2048;
+const samples = {}, pv = {};
+let sampleSeq = 0;
+
+function blobToData(blob, max, name) {
+  return new Promise((ok, fail) => loadBlob(blob, img => ok(imageToData(img, max)), () => fail(new Error(`${name} 不是可以讀取的圖片`))));
+}
+// 範例 = art-src 裡的一項，或從電腦選的圖；讀過的圖會留著，調設定時不用重讀
+function sampleFromItem(g, it) {
+  const cache = {};
+  return { key: 'smp' + (++sampleSeq), local: false, item: it, load: f => cache[f] || (cache[f] = loadImage(it.dir, f, MAX_SRC(g))) };
+}
+function sampleFromFiles(g, list) {
+  let files = [...list].filter(f => f.type.startsWith('image/'));
+  if (GROUPS[g].kind === 'scene') files = files.slice(0, 1);
+  if (!files.length) return null;
+  const map = {}, cache = {};
+  for (const f of files) map[f.name] = f;
+  return { key: 'smp' + (++sampleSeq), local: true, item: { name: files.map(f => f.name).join('、'), files: files.map(f => f.name), settings: null },
+    load: f => cache[f] || (cache[f] = blobToData(map[f], MAX_SRC(g), f)) };
+}
+function setSample(g, smp) {
+  if (!smp) return;
+  samples[g] = smp;
+  if (!smp.local) store.set('batch.sample.' + g, smp.item.name);
+  fillSampleSelect(g); runPreview(g);
+}
+function fillSampleSelect(g) {
+  const sel = pvCol(g).querySelector('.pvsel'), smp = samples[g], items = scanData ? scanData.groups[g].items : [];
+  const opts = [];
+  if (!smp) opts.push(`<option value="">${items.length ? '— 選一張範例圖 —' : '（原圖資料夾裡還沒有圖）'}</option>`);
+  if (smp && smp.local) opts.push(`<option value="local">電腦裡的圖：${esc(smp.item.name)}</option>`);
+  for (const it of items) opts.push(`<option value="item:${esc(it.name)}">${esc(it.name)}</option>`);
+  sel.innerHTML = opts.join('');
+  sel.value = !smp ? '' : smp.local ? 'local' : 'item:' + smp.item.name;
+}
+function buildPreviewCols() {
+  for (const g in GROUPS) {
+    pv[g] = { token: 0, timer: 0, res: null, anim: null };
+    const col = pvCol(g), multi = GROUPS[g].kind === 'sprite';
+    col.innerHTML = `<div class="pvpick"><span class="dim">範例圖</span><select class="pvsel"></select>
+      <button class="pvfile">從電腦選圖</button><input type="file" accept="image/*" ${multi ? 'multiple' : ''} hidden></div>
+      <div class="pvarea"><div class="pvmsg dim"></div><div class="pvout"></div></div>`;
+    const sel = col.querySelector('.pvsel'), fin = col.querySelector('input[type=file]'), area = col.querySelector('.pvarea');
+    col.querySelector('.pvfile').onclick = () => fin.click();
+    fin.onchange = () => { setSample(g, sampleFromFiles(g, fin.files)); fin.value = ''; };
+    sel.onchange = () => {
+      const it = scanData && scanData.groups[g].items.find(x => 'item:' + x.name === sel.value);
+      if (it) setSample(g, sampleFromItem(g, it));
+    };
+    area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('over'); });
+    area.addEventListener('dragleave', () => area.classList.remove('over'));
+    area.addEventListener('drop', e => { e.preventDefault(); area.classList.remove('over'); setSample(g, sampleFromFiles(g, e.dataTransfer.files)); });
+    fillSampleSelect(g); runPreview(g);
+  }
+}
+// 掃描後：art-src 的範例重新讀（圖可能改過）；還沒選範例的，選上次用的或第一個能轉的
+function refreshSamples() {
+  for (const g in GROUPS) {
+    const items = scanData.groups[g].items, cur = samples[g];
+    if (cur && !cur.local) {
+      const it = items.find(x => x.name === cur.item.name);
+      samples[g] = it ? sampleFromItem(g, it) : null;
+    }
+    if (!samples[g]) {
+      const last = store.get('batch.sample.' + g);
+      const it = items.find(x => x.name === last) || items.find(x => planOf(g, x).ok) || items[0];
+      if (it) samples[g] = sampleFromItem(g, it);
+    }
+    fillSampleSelect(g);
+    if (!samples[g] || !samples[g].local) runPreview(g);
+  }
+}
+
+function drawImg(cv, img, z) {
+  const b = document.createElement('canvas'); b.width = img.width; b.height = img.height; b.getContext('2d').putImageData(img, 0, 0);
+  cv.width = img.width * z; cv.height = img.height * z;
+  const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.drawImage(b, 0, 0, cv.width, cv.height);
+}
+function schedulePreview(g) { clearTimeout(pv[g].timer); pv[g].timer = setTimeout(() => runPreview(g), 120); }
+async function runPreview(g) {
+  const st = pv[g], smp = samples[g], col = pvCol(g), msg = col.querySelector('.pvmsg'), out = col.querySelector('.pvout');
+  const token = ++st.token;
+  if (!smp) {
+    st.res = null; st.anim = null; out.innerHTML = '';
+    msg.innerHTML = '選一張範例圖，或把圖拖到這個框裡。' + (GROUPS[g].kind === 'sprite' ? '<br>可以一次選三張（front / side / back），或一張三視圖。' : '');
+    return;
+  }
+  msg.textContent = '轉換中…';
+  try {
+    const note = smp.item.settings ? '<div class="dim">・這個範例有自己的 settings.json，預覽有套用它。</div>' : '';
+    if (GROUPS[g].kind === 'scene') {
+      const s = sceneSettings(smp.item), full = await smp.load(smp.item.files[0]);
+      if (token !== st.token) return;
+      const img = sceneConvert(full, s);
+      st.res = null; st.anim = null;
+      const z = clamp(Math.floor(640 / img.width), 1, 8);
+      out.innerHTML = `<div class="pvsub">轉換結果</div><div class="${bgClass()}"><canvas class="res"></canvas></div>
+        <div class="pvsub">原圖</div><canvas class="orig"></canvas>`;
+      drawImg(out.querySelector('.res'), img, z);
+      const oc = out.querySelector('.orig'), k = Math.min(1, img.width * z / full.width);
+      const b = document.createElement('canvas'); b.width = full.width; b.height = full.height; b.getContext('2d').putImageData(full, 0, 0);
+      oc.width = Math.round(full.width * k); oc.height = Math.round(full.height * k);
+      const octx = oc.getContext('2d'); octx.imageSmoothingQuality = 'high'; octx.drawImage(b, 0, 0, oc.width, oc.height);
+      msg.innerHTML = `${img.width}×${img.height} px，共 ${countColors([img]).size} 色（原圖 ${full.width}×${full.height}）${note}`;
+    } else {
+      const s = spriteSettings(g, smp.item), plan = planSprite(g, smp.item);
+      if (!plan.ok) throw new Error(plan.err.join(' '));
+      const { images, warn } = await spriteImages(plan, s, smp.load);
+      if (token !== st.token) return;
+      const res = makeSprite(images, s, smp.item, smp.key + '|' + s.sheetOrder);
+      if (!res.walkSheet) throw new Error(res.warn.map(fixMsg).join(' '));
+      warn.push(...res.warn.map(fixMsg));
+      // 每個動作一列：四個方向的動畫
+      const z = clamp(Math.floor(96 / Math.max(res.W, res.H)), 1, 8);
+      out.innerHTML = res.actions.map((a, ai) => `<div class="pvsub">${a.label}（${a.name}.png，${a.N} 幀，每格 ${a.W}×${a.H}）</div><div class="pvrow">` +
+        DIRS.slice(0, res.cols).map((d, i) => `<figure><div class="${bgClass()}"><canvas data-a="${ai}" data-d="${i}"></canvas></div><figcaption>${d}</figcaption></figure>`).join('') +
+        '</div>').join('');
+      st.res = res; st.anim = { z, cvs: [...out.querySelectorAll('canvas[data-d]')] };
+      drawAnim(st);
+      msg.innerHTML = `每格 ${res.W}×${res.H}，${res.cols} 方向，${res.actions.length} 個動作，共 ${countColors(res.actions.map(a => a.sheet)).size} 色`
+        + warn.map(w => `<div class="warn">・${esc(w)}</div>`).join('') + note;
+    }
+  } catch (e) {
+    if (token !== st.token) return;
+    st.res = null; st.anim = null; out.innerHTML = '';
+    msg.innerHTML = `<span class="warn">⚠ ${esc(e.message)}</span>`;
+  }
+}
+let animPos = 0;
+function drawAnim(st) { for (const cv of st.anim.cvs) { const a = st.res.actions[+cv.dataset.a]; drawImg(cv, a.dirs[+cv.dataset.d][animPos % a.N], st.anim.z); } }
+setInterval(() => {
+  animPos = (animPos + 1) % 840; // 840 可以被 1～8 整除
+  for (const g in pv) if (pv[g].res && pv[g].anim) drawAnim(pv[g]);
+}, 150);
+
+function addLog(html) { const d = document.createElement('div'); d.innerHTML = html; $('log').appendChild(d); $('log').scrollTop = 1e9; }
+function addResult(job, r, err) {
+  const el = document.createElement('div');
+  el.className = 'res' + (err ? ' fail' : '');
+  el.innerHTML = `<h4>${err ? '<span class="warn">✕</span>' : r.warn.length ? '<span class="warn">!</span>' : '<span class="ok">✓</span>'}
+    ${esc(GROUPS[job.g].label)}：${esc(job.item.name)}</h4>
+    ${err ? '' : `<div class="pv"></div><div class="msg dim">${esc(r.info)}</div>`}
+    ${err ? `<div class="msg warn">${esc(err)}</div>` : r.warn.map(w => `<div class="msg warn">・${esc(w)}</div>`).join('')}
+    ${err ? '' : `<div class="path">${r.paths.map(esc).join('<br>')}</div>`}`;
+  if (!err) {
+    const pv = el.querySelector('.pv');
+    for (const img of r.preview) {
+      const z = clamp(Math.floor(Math.min(210 / img.width, 220 / img.height)), 1, 8);
+      const c = document.createElement('canvas'), b = document.createElement('canvas');
+      b.width = img.width; b.height = img.height; b.getContext('2d').putImageData(img, 0, 0);
+      c.width = img.width * z; c.height = img.height * z; c.style.maxWidth = '100%';
+      const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.drawImage(b, 0, 0, c.width, c.height);
+      pv.appendChild(c);
+    }
+  }
+  $('results').appendChild(el);
+}
+
+async function start() {
+  const list = jobs(); if (!list.length) return;
+  running = true; stopFlag = false; updateStart();
+  $('btnStop').hidden = false; $('doneBar').hidden = true; $('log').hidden = false;
+  $('log').innerHTML = ''; $('results').innerHTML = ''; $('prog').style.width = '0';
+  let ok = 0, fail = 0, warned = 0;
+  for (let i = 0; i < list.length; i++) {
+    if (stopFlag) { addLog('<span class="warn">已停止。</span>'); break; }
+    const job = list[i], name = `${GROUPS[job.g].label}「${esc(job.item.name)}」`;
+    $('progMsg').textContent = `${i + 1} / ${list.length}　${GROUPS[job.g].label}：${job.item.name}`;
+    await new Promise(r => setTimeout(r, 30)); // 讓畫面有機會更新
+    try {
+      const r = GROUPS[job.g].kind === 'scene' ? await doScene(job) : await doSprite(job);
+      ok++; if (r.warn.length) warned++;
+      job.item.done = true;
+      addLog(`<span class="ok">✓</span> ${name} 完成${r.warn.length ? `（<span class="warn">${r.warn.length} 個提醒</span>）` : ''}`);
+      addResult(job, r);
+    } catch (e) {
+      fail++;
+      addLog(`<span class="warn">✕ ${name} 失敗：${esc(e.message)}</span>`);
+      addResult(job, null, e.message);
+    }
+    $('prog').style.width = ((i + 1) / list.length * 100) + '%';
+  }
+  running = false; $('btnStop').hidden = true;
+  $('progMsg').textContent = '';
+  $('doneBar').hidden = false;
+  $('doneMsg').innerHTML = `完成 <span class="ok">${ok}</span> 個` + (warned ? `（其中 ${warned} 個有提醒，請看下面的說明）` : '') + (fail ? `，<span class="warn">失敗 ${fail} 個</span>` : '') + '。';
+  renderScan();
+}
+$('btnStart').onclick = start;
+$('btnStop').onclick = () => { stopFlag = true; };
+$('btnScan').onclick = scan;
+// ---------- 資料夾 ----------
+let folders = null;
+const errText = e => { try { return JSON.parse(e.message).error || e.message; } catch (x) { return e.message; } };
+function showFolders(f) {
+  folders = f;
+  $('srcPath').textContent = f.src || '（還沒選）';
+  $('outPath').textContent = f.out ? f.out + (f.outAuto ? '　（自動）' : '') : '（還沒選）';
+  for (const el of document.querySelectorAll('.outText')) el.textContent = f.out || '（還沒選）';
+  $('srcInput').value = f.src || ''; $('outInput').value = f.out || '';
+  $('openSrc').disabled = !f.src; $('openOut').disabled = !f.out; $('autoOut').disabled = !f.src || f.outAuto;
+}
+async function loadFolders() { try { showFolders(await api('/api/folders')); } catch (e) { /* 沒有程式在跑 */ } }
+// 換了資料夾：設定檔跟著原圖資料夾走，所以重新讀設定、重新掃描
+async function folderChanged(f, msg) {
+  showFolders(f);
+  $('folderMsg').innerHTML = msg;
+  await loadCfgFile();
+  await scan();
+}
+async function pick(which) {
+  if (!serverOk) { $('folderMsg').innerHTML = NEED_SERVER; return; }
+  $('folderMsg').textContent = '請在跳出的視窗裡選擇資料夾…（沒看到的話，看一下工作列）';
+  try {
+    const f = await api('/api/pick?which=' + which, { method: 'POST' });
+    if (f.picked) folderChanged(f, `<span class="ok">已設定${which === 'src' ? '原圖' : '輸出'}資料夾。</span>`);
+    else $('folderMsg').textContent = '';
+  } catch (e) { $('folderMsg').innerHTML = `<span class="warn">⚠ ${esc(errText(e))}</span>`; }
+}
+async function setFolder(body, msg) {
+  if (!serverOk) { $('folderMsg').innerHTML = NEED_SERVER; return; }
+  try { folderChanged(await api('/api/folders', { method: 'POST', body: JSON.stringify(body) }), msg); }
+  catch (e) { $('folderMsg').innerHTML = `<span class="warn">⚠ ${esc(errText(e))}</span>`; }
+}
+$('pickSrc').onclick = () => pick('src');
+$('pickOut').onclick = () => pick('out');
+$('srcApply').onclick = () => setFolder({ src: $('srcInput').value }, '<span class="ok">已設定原圖資料夾。</span>');
+$('outApply').onclick = () => setFolder({ out: $('outInput').value }, '<span class="ok">已設定輸出資料夾。</span>');
+$('autoOut').onclick = () => setFolder({ out: null }, '<span class="ok">輸出資料夾改回自動。</span>');
+const openFolder = which => api('/api/open?which=' + which, { method: 'POST' })
+  .then(() => { $('openMsg').innerHTML = '<span class="ok">已經打開檔案總管（沒看到的話，看一下工作列）。</span>放好圖之後回到這個視窗，繼續步驟 2。'; })
+  .catch(e => { if (!serverOk) { setServer(false); findServer(); } else $('folderMsg').innerHTML = `<span class="warn">⚠ ${esc(errText(e))}</span>`; });
+$('openSrc').onclick = () => openFolder('src');
+$('openOut').onclick = () => openFolder('out');
+$('btnOpenOut').onclick = () => openFolder('out');
+// 從檔案總管切回來時自動重新掃描
+addEventListener('focus', () => { if (scanData && !running) scan(); });
+
+// 告訴背景程式「視窗還開著」；視窗關掉時通知它結束
+if (location.protocol.startsWith('http')) {
+  const pageId = Math.random().toString(36).slice(2);
+  const ping = () => fetch('/api/ping?id=' + pageId).catch(() => {});
+  ping(); setInterval(ping, 15000);
+  addEventListener('pagehide', () => { try { navigator.sendBeacon('/api/bye?id=' + pageId); } catch (e) { /* 略過 */ } });
+}
+
+buildForms();
+buildPreviewCols();
+loadFolders().then(async () => { await loadCfgFile(); scan(); });
+</script>
+</body>
+</html>

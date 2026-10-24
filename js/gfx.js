@@ -100,16 +100,20 @@ const SPEC = {
 function animLen(spec, act) { const a = SPEC[spec].anims[act]; return a ? a.n * a.ms / 1000 : 0; }
 
 // 畫一個角色：(x, y) = 腳底位置，scale = 邏輯像素倍率
+// 動作沒有圖時的替代：跑步 → 走路，其他 → 站姿 → 走路
+// sp.res：素材的精細度（0.5 = 素材 1 像素畫成 1 個畫面像素，用在「圖片批次轉換」做的高解析角色）
+// a.ox / a.oy：這個動作自己的腳底位置（攻擊、倒下的格子比較大）
 function drawSpec(c, specName, act, dir, t, x, y, scale = PX, flash = 0) {
   const sp = SPEC[specName];
-  const a = sp.anims[act] || sp.anims.idle || sp.anims.walk;
+  const a = sp.anims[act] || (act === 'run' && sp.anims.walk) || sp.anims.idle || sp.anims.walk;
   const im = img(a.file);
   if (!ready(im)) return false;
   const k = Math.floor(t * 1000 / a.ms);
   const f = a.once ? Math.min(a.n - 1, Math.max(0, k)) : ((k % a.n) + a.n) % a.n;
   let col, row;
   if (a.strip) { col = f; row = 0; } else { col = a.oneDir ? 0 : dir; row = (a.row || 0) + f; }
-  const dx = snap(x - sp.ox * scale), dy = snap(y - sp.oy * scale);
+  scale *= sp.res || 1;
+  const dx = snap(x - (a.ox !== undefined ? a.ox : sp.ox) * scale), dy = snap(y - (a.oy !== undefined ? a.oy : sp.oy) * scale);
   const draw = () => c.drawImage(im, col * a.cw, row * a.ch, a.cw, a.ch, dx, dy, a.cw * scale, a.ch * scale);
   draw();
   if (flash > 0) { c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.min(1, flash); draw(); c.restore(); }
@@ -122,7 +126,7 @@ const heroSpec = p => (p.spr && SPEC[p.spr] ? p.spr : clsOf(p).spr);
 function heroAnim(p) {
   if (p.dead) return ['dead', p.deadT || 0];
   if (p.act && !(p.moving > 0.5 && p.act.n === 'shoot')) return ['attack', p.act.t / p.act.dur * animLen(heroSpec(p), 'attack')];
-  if (p.moving > 0.3) return ['walk', p.runT || 0];
+  if (p.moving > 0.3) return [p.running ? 'run' : 'walk', p.runT || 0];
   if (p.hurt > 0) return ['hit', 0.12 - p.hurt];
   return ['idle', G.t];
 }
@@ -231,6 +235,9 @@ function drawProjectile(c, b, kind) {
     c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
     c.fillStyle = '#f5ecd2'; c.fillRect(-7, -3, 14, 6);
     c.fillStyle = '#c8202c'; c.fillRect(-5, -1, 10, 2); c.fillRect(-1, -3, 2, 6);
+  } else if (kind === 'arrow') {   // 弓箭手的箭（「圖片批次轉換」做的，箭頭朝右）
+    const pr = SPEC[heroSpec(P)] && SPEC[heroSpec(P)].projectile, im = pr && img(pr.file);
+    if (im && ready(im)) { c.translate(snap(s.x), snap(s.y - z)); c.rotate(ang); c.drawImage(im, -pr.w / 2, -pr.h / 2, pr.w, pr.h); }
   } else if (kind === 'kunai') {
     const im = img('FX/Projectile/Kunai.png');
     if (ready(im)) { c.translate(s.x, s.y - z); c.rotate(ang); c.drawImage(im, -9, -3, 18, 6.5); }
@@ -402,7 +409,7 @@ function drawPickupSprite(c, g, x, y) {
 // ---------- 載入全部素材 ----------
 function allFiles() {
   const s = new Set();
-  for (const sp of Object.values(SPEC)) for (const a of Object.values(sp.anims)) s.add(a.file);
+  for (const sp of Object.values(SPEC)) { for (const a of Object.values(sp.anims)) s.add(a.file); if (sp.projectile) s.add(sp.projectile.file); }
   for (const f of Object.values(FX)) s.add(f.file);
   [T_FLOOR, T_WATER, T_NATURE, T_CAMP, 'FX/Projectile/Shuriken.png', 'FX/Projectile/Fireball.png', 'FX/Projectile/Kunai.png', 'FX/Projectile/EnergyBall.png',
     'Items/Potion/LifePot.png', 'Items/Potion/WaterPot.png', 'Items/Treasure/GoldCoin.png', 'FX/Magic/Spirit/SpriteSheetBlue.png'].forEach(f => s.add(f));
@@ -410,7 +417,31 @@ function allFiles() {
   [T_DESERT, T_DUNGEON, T_DETAIL, 'FX/Magic/Circle/SpriteSheetWhite.png'].forEach(f => s.add(f));
   return [...s];
 }
+// ---------- 用「圖片批次轉換」做的角色 ----------
+// 讀 assets/custom/.../sprite.json，換掉原本的角色圖；讀不到（還沒轉換）就繼續用原本的圖
+const CUSTOM_SPECS = [
+  { key: 'heroSamurai', dir: 'characters/samurai' },   // 武士：高解析 Q 版武士（有跑步、揮刀、受傷、倒下）
+  { key: 'hero', dir: 'characters/archer' },           // 忍者：換成精靈弓箭手的外觀（拉弓射箭，射出去的是箭）
+];
+function loadCustomSpecs() {
+  return Promise.all(CUSTOM_SPECS.map(({ key, dir }) =>
+    fetch(`assets/custom/${dir}/sprite.json`, { cache: 'no-cache' }).then(r => r.ok ? r.json() : null).then(j => {
+      if (!j || !j.anims || !j.anims.walk) return;
+      const res = 0.5, anims = {};
+      for (const [name, a] of Object.entries(j.anims)) {
+        anims[name] = { file: `../custom/${dir}/${a.file}`, cw: a.w, ch: a.h, n: a.frames, ms: a.ms, ox: a.ox, oy: a.oy };
+        if (['attack', 'hit', 'dead'].includes(name)) anims[name].once = true;
+      }
+      const base = j.anims.idle || j.anims.walk;
+      SPEC[key] = { ox: base.ox, oy: base.oy, h: Math.round(j.cell[1] * res * 0.9), res, anims, custom: true };
+      // 弓箭手：射出去的箭（箭頭朝右），畫面上 1 素材像素 = 1 畫面像素
+      if (j.projectile) SPEC[key].projectile = { file: `../custom/${dir}/${j.projectile.file}`, w: j.projectile.w, h: j.projectile.h };
+    }).catch(() => { /* 沒有就用原本的圖 */ })));
+}
 function loadGameAssets() {
+  return loadCustomSpecs().then(() => loadAllImages());
+}
+function loadAllImages() {
   return Promise.all(allFiles().map(f => new Promise(res => {
     const im = img(f);
     if (ready(im)) res();

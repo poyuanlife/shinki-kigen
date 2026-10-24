@@ -5,3 +5,9 @@ Desktop.ini
 *.log
 .vscode/
 node_modules/
+
+# 圖片批次轉換：打包產物（用 node tools/build-exe.js 重新產生）
+/圖片批次轉換.exe
+tools/.exe-build/
+/art-src/
+/圖片批次轉換.rar

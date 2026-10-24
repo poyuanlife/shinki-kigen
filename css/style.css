@@ -328,6 +328,8 @@ html.touch #skillPick { left: 50% !important; top: 50% !important; transform: tr
 .spHint, .spEmpty { color: #888; font-size: 11.5px; margin: 6px 2px 0; }
 html.touch .spItem { padding: 10px; font-size: 15px; }
 #tAtkSwap { right: 66px; bottom: 66px; width: 30px; height: 30px; font-size: 15px; background: #2a2014; border: 2px solid #c79a46; color: #f3d48a; z-index: 2; }
+#tActions #tRun { right: 214px; bottom: 84px; width: 44px; height: 32px; border-radius: 16px; font-size: 13px; font-weight: bold; background: #1d2633; border: 2px solid #6d8bb0; color: #b8cce6; }
+#tActions #tRun.on { background: #2f5a86; border-color: #9fd0ff; color: #fff; }
 #tActions #tPick { right: 150px; bottom: 84px; width: 58px; height: 32px; border-radius: 16px; font-size: 13px; font-weight: bold; background: #3a2c10; border: 2px solid #ffd23f; color: #ffe9a0; }
 
 /* 職業卡片：可點選 */

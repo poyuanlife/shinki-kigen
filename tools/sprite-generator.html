@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>多方向精靈圖產生器</title>
+<link rel="icon" href="batch-icon.png">
+<style>
+:root {
+  --bg: #1b1d24; --panel: #242733; --panel2: #2d3140; --line: #3a3f52;
+  --text: #e6e8ef; --dim: #9aa0b4; --accent: #e0a040; --accent2: #f2c471; --warn: #ff8a6a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  display: flex; flex-direction: column;
+}
+header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 17px; margin: 0 10px 0 0; color: var(--accent2); }
+header .sp { flex: 1; }
+header a { color: var(--dim); }
+button, select, input[type=number], input[type=text], textarea {
+  font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 6px;
+}
+button { padding: 5px 12px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #1b1d24; border-color: var(--accent); font-weight: bold; }
+select, input[type=number], input[type=text] { padding: 4px 6px; }
+input[type=number] { width: 64px; }
+textarea { width: 100%; min-height: 60px; padding: 6px; font-family: Consolas, monospace; font-size: 12px; }
+input[type=color] { width: 40px; height: 28px; padding: 0 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); }
+input[type=range] { flex: 1; min-width: 80px; accent-color: var(--accent); }
+
+.wrap { flex: 1; display: flex; min-height: 0; }
+aside { width: 340px; flex: none; overflow-y: auto; overflow-x: hidden; background: var(--panel); border-right: 1px solid var(--line); padding: 6px 12px 30px; }
+details { border-bottom: 1px solid var(--line); padding: 6px 0 10px; }
+summary { cursor: pointer; font-weight: bold; color: var(--accent2); padding: 4px 0; user-select: none; }
+.row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
+.row > span:first-child { width: 86px; flex: none; color: var(--dim); }
+.row output { width: 30px; text-align: right; font-variant-numeric: tabular-nums; }
+.row select, .row input[type=text] { flex: 1; min-width: 0; }
+.row.chk > span:first-child { width: auto; }
+.hint { color: var(--dim); font-size: 12px; margin: 2px 0 6px; }
+.disabled { opacity: .4; pointer-events: none; }
+[hidden] { display: none !important; }
+
+main { flex: 1; min-width: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.card h3 { margin: 0 0 8px; font-size: 13px; color: var(--accent2); }
+.card h3 small { color: var(--dim); font-weight: normal; margin-left: 8px; }
+.slots { display: flex; gap: 10px; flex-wrap: wrap; }
+.slot { width: 150px; background: var(--panel2); border: 2px dashed var(--line); border-radius: 8px; padding: 6px; text-align: center; position: relative; }
+.slot.has { border-style: solid; }
+.slot.over { border-color: var(--accent); }
+.slot.opt { width: 120px; opacity: .85; }
+.slot .lbl { font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+.slot .lbl b { color: var(--text); }
+.slot canvas { width: 100%; height: 120px; object-fit: contain; display: block; }
+.slot.opt canvas { height: 90px; }
+.slot .ph { height: 120px; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 12px; cursor: pointer; }
+.slot.opt .ph { height: 90px; }
+.slot .btns { display: flex; gap: 4px; justify-content: center; margin-top: 4px; }
+.slot .btns button { padding: 1px 8px; font-size: 12px; }
+#warn { color: var(--warn); font-size: 13px; margin-top: 6px; }
+.prev { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+.actrow { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.actrow:last-child { border-bottom: none; }
+.actrow figure { margin: 0; text-align: center; }
+.actrow figcaption { font-size: 12px; color: var(--dim); margin-top: 4px; }
+.actlbl { width: 88px; flex: none; align-self: center; color: var(--accent2); font-weight: bold; }
+.actlbl small { display: block; color: var(--dim); font-weight: normal; font-size: 11px; }
+.subhead { margin: 12px 0 2px; padding-top: 8px; border-top: 1px solid var(--line); color: var(--accent2); font-size: 13px; }
+.sheetfig button { margin-top: 4px; padding: 2px 10px; font-size: 12px; }
+.prev figure { margin: 0; text-align: center; }
+.prev figcaption { font-size: 12px; color: var(--dim); margin-top: 4px; }
+.stagebox { padding: 8px; border-radius: 6px; display: inline-block; }
+canvas.px { image-rendering: pixelated; display: block; }
+.checker { background-color: #c8c8c8; background-image:
+  linear-gradient(45deg, #9e9e9e 25%, transparent 25%), linear-gradient(-45deg, #9e9e9e 25%, transparent 25%),
+  linear-gradient(45deg, transparent 75%, #9e9e9e 75%), linear-gradient(-45deg, transparent 75%, #9e9e9e 75%);
+  background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+.bg-grass { background: #6f9a45; } .bg-camp { background: #b98f5c; } .bg-black { background: #111; } .bg-white { background: #fff; }
+.dl { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#info { color: var(--dim); font-size: 12px; }
+.slot canvas { cursor: pointer; }
+.slot .crop-tag { position: absolute; top: 26px; right: 8px; background: var(--accent); color: #1b1d24; font-size: 11px; border-radius: 4px; padding: 0 4px; }
+.sheetbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+#sheetMsg { color: var(--accent2); font-size: 13px; }
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 20; }
+.modal-box { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; max-width: calc(100vw - 30px); max-height: calc(100vh - 30px); display: flex; flex-direction: column; gap: 8px; }
+.modal-box h3 { margin: 0; font-size: 15px; color: var(--accent2); }
+.crop-stage { overflow: auto; display: flex; justify-content: center; }
+#cropCv { touch-action: none; display: block; }
+.modal-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.modal-bar .sp { flex: 1; }
+#drop { position: fixed; inset: 0; background: rgba(224,160,64,.15); border: 4px dashed var(--accent); display: none; align-items: center; justify-content: center; font-size: 24px; color: var(--accent2); z-index: 9; pointer-events: none; }
+body.dragging #drop { display: flex; }
+</style>
+</head>
+<body>
+<header>
+  <h1>多方向精靈圖產生器</h1>
+  <button id="btnDemo">範例圖</button>
+  <span class="hint" style="margin:0">放入正面、背面、側面三張圖，自動產生 4 方向 + 走路動畫</span>
+</header>
+
+<div class="wrap">
+<aside>
+  <details open>
+    <summary>角色大小</summary>
+    <label class="row"><span>每格大小</span><select data-k="size" id="sizeSel"></select></label>
+    <div class="row"><span>寬 × 高</span>
+      <input type="number" data-k="w" id="inW" min="8" max="256"> ×
+      <input type="number" data-k="h" id="inH" min="8" max="256"> px</div>
+    <label class="row"><span>方向數</span>
+      <select data-k="dirCount"><option value="8">8 方向（含斜向）</option><option value="4">4 方向（跟遊戲現有角色一樣）</option></select></label>
+    <label class="row"><span>側面圖朝向</span>
+      <select data-k="sideFacing"><option value="left">朝左</option><option value="right">朝右</option></select></label>
+    <label class="row"><span>取色方式</span>
+      <select data-k="resample">
+        <option value="mode">取最多的顏色（推薦）</option>
+        <option value="average">平均顏色（較平滑）</option>
+        <option value="nearest">最近鄰（銳利）</option>
+      </select></label>
+    <div class="hint">三張圖會縮放成一樣的身高、腳底對齊。斜向圖要跟側面圖朝同一邊。</div>
+    <div id="diagBox">
+      <label class="row"><span>斜向側面比重</span><input type="range" data-k="diagSide" min="0" max="100"><output></output></label>
+      <div class="hint">自動產生斜向圖時，側面圖用多少。臉上出現多餘的眼睛就調低；側面輪廓（頭髮、鼻子）不見了就調高。</div>
+    </div>
+  </details>
+
+  <details open>
+    <summary>走路動畫</summary>
+    <label class="row"><span>做法</span>
+      <select data-k="animMode"><option value="rig">骨架（關節擺動作，較自然）</option><option value="pixel">簡易（只移動腳的像素）</option></select></label>
+    <div id="rigBox">
+      <div class="hint">骨架做法：在右邊「關節點」拖曳調整關節位置，手腳會依關節擺出走路動作。目前只做 4 方向。</div>
+      <label class="row"><span>幀數</span><select data-k="rigFrames"><option value="4">4 幀（跟遊戲現有角色一樣）</option><option value="6">6 幀</option><option value="8">8 幀（最順）</option></select></label>
+      <label class="row"><span>腿擺動角度</span><input type="range" data-k="rigLeg" min="0" max="45"><output></output>°</label>
+      <label class="row"><span>膝蓋彎曲</span><input type="range" data-k="rigKnee" min="0" max="80"><output></output>°</label>
+      <label class="row"><span>手臂擺動</span><input type="range" data-k="rigArm" min="0" max="45"><output></output>°</label>
+      <label class="row"><span>正面抬腳</span><input type="range" data-k="rigLift" min="0" max="40"><output></output>%</label>
+      <label class="row"><span>身體起伏</span><input type="range" data-k="rigBob" min="0" max="6"><output></output>%</label>
+      <label class="row"><span>腿的粗細</span><input type="range" data-k="rigLegW" min="50" max="200" step="5"><output></output>%</label>
+      <label class="row"><span>手臂粗細</span><input type="range" data-k="rigArmW" min="50" max="200" step="5"><output></output>%</label>
+      <div class="hint">粗細：決定手腳要切多寬。在「關節點」打開「顯示分區顏色」比較好調，顏色要剛好蓋住整隻手或腳。</div>
+      <label class="row chk"><input type="checkbox" data-k="chibiOn"><span>改成 Q 版頭身（像《歧路旅人》）</span></label>
+      <div id="chibiBox">
+        <label class="row"><span>目標頭身</span><input type="range" data-k="chibiHeads" min="2" max="6" step="0.25"><output></output>頭身</label>
+        <label class="row"><span>頭部放大</span><input type="range" data-k="chibiHead" min="100" max="200" step="5"><output></output>%</label>
+        <label class="row"><span>腿佔身體</span><input type="range" data-k="chibiLegs" min="25" max="65"><output></output>%</label>
+        <label class="row"><span>身體寬度</span><input type="range" data-k="chibiWidth" min="80" max="150" step="5"><output></output>%</label>
+        <div class="hint">依關節點的「脖子」和「腰」分成頭、身體、腿三段：頭放大，身體和腿縮短。脖子、腰的位置會影響結果。Q 版時「關節點」不顯示分區顏色。</div>
+      </div>
+      <div class="subhead">其他動作</div>
+      <label class="row"><span>待機</span><select data-k="idleFrames"><option value="1">1 幀（站著不動，跟遊戲現有角色一樣）</option><option value="4">4 幀（呼吸）</option></select></label>
+      <label class="row chk"><input type="checkbox" data-k="actRun"><span>跑步（Run.png）</span></label>
+      <div id="runBox">
+        <label class="row"><span>幀數</span><select data-k="runFrames"><option value="4">4 幀</option><option value="6">6 幀</option><option value="8">8 幀</option></select></label>
+        <label class="row"><span>腿擺動角度</span><input type="range" data-k="runLeg" min="10" max="60"><output></output>°</label>
+        <label class="row"><span>膝蓋彎曲</span><input type="range" data-k="runKnee" min="0" max="110"><output></output>°</label>
+        <label class="row"><span>手臂擺動</span><input type="range" data-k="runArm" min="0" max="70"><output></output>°</label>
+        <label class="row"><span>身體前傾</span><input type="range" data-k="runLean" min="0" max="25"><output></output>°</label>
+        <label class="row"><span>身體起伏</span><input type="range" data-k="runBob" min="0" max="8"><output></output>%</label>
+      </div>
+      <label class="row chk"><input type="checkbox" data-k="actAtk"><span>揮刀攻擊（Attack.png）</span></label>
+      <div id="atkBox">
+        <label class="row"><span>幀數</span><select data-k="atkFrames"><option value="4">4 幀</option><option value="6">6 幀</option><option value="8">8 幀</option></select></label>
+        <label class="row"><span>武器種類</span><select data-k="weaponType"><option value="auto">自動判斷（橫的是刀、直的是弓）</option><option value="sword">刀（揮刀）</option><option value="bow">弓（拉弓射箭）</option></select></label>
+        <label class="row"><span>弓的長度</span><input type="range" data-k="bowLen" min="20" max="120" step="5"><output></output>%</label>
+        <label class="row"><span>箭的長度</span><input type="range" data-k="arrowLen" min="20" max="100" step="5"><output></output>%</label>
+        <label class="row"><span>刀的長度</span><input type="range" data-k="weaponLen" min="20" max="120" step="5"><output></output>%</label>
+        <label class="row"><span>握的位置</span><input type="range" data-k="weaponGrip" min="0" max="45"><output></output>%</label>
+        <label class="row chk"><input type="checkbox" data-k="weaponFlip"><span>武器圖的刀柄在右邊</span></label>
+        <label class="row chk"><input type="checkbox" data-k="atkTrail"><span>揮下時加刀光</span></label>
+        <div class="hint">刀的長度是相對身高（100% = 跟身高一樣長）。握的位置是從刀柄末端算起。攻擊的格子會比走路大（刀會伸出去），大小顯示在預覽上。</div>
+      </div>
+      <label class="row chk"><input type="checkbox" data-k="actHit"><span>受傷（Hit.png，3 幀）</span></label>
+      <label class="row chk"><input type="checkbox" data-k="actDead"><span>倒下（Dead.png，4 幀，最後一幀躺在地上）</span></label>
+    </div>
+    <div id="pixBox">
+    <label class="row"><span>腳的長度</span><input type="range" data-k="legRatio" min="10" max="60"><output></output>%</label>
+    <label class="row"><span>左右腳分界</span><input type="range" data-k="legSplit" min="-6" max="6"><output></output>px</label>
+    <label class="row"><span>抬腳高度</span><input type="range" data-k="lift" min="0" max="12"><output></output>px</label>
+    <label class="row"><span>身體起伏</span><input type="range" data-k="bob" min="0" max="6"><output></output>px</label>
+    <label class="row"><span>側面跨步</span><input type="range" data-k="stride" min="0" max="12"><output></output>px</label>
+    <label class="row chk"><input type="checkbox" data-k="guides"><span>在基礎圖上顯示腳的位置</span></label>
+    <div class="hint">紅線以下是腳，藍線把左右腳分開。紅線要剛好在腰帶或衣服下緣，走路才自然。</div>
+    <button id="btnAutoAnim">依大小重設建議值</button>
+    </div>
+    <label class="row"><span>播放速度</span><input type="range" data-k="ms" min="60" max="400" step="10"><output></output>ms</label>
+  </details>
+
+  <details open>
+    <summary>去背</summary>
+    <label class="row"><span>背景</span>
+      <select data-k="bgMode">
+        <option value="auto">自動偵測背景色</option>
+        <option value="manual">手動指定背景色</option>
+        <option value="off">不去背（圖片本來就是透明背景）</option>
+      </select></label>
+    <div class="row" id="bgManualRow"><span>背景色</span><input type="color" data-k="bgManual"></div>
+    <label class="row"><span>容差</span><input type="range" data-k="bgTol" min="0" max="100"><output></output></label>
+    <label class="row chk"><input type="checkbox" data-k="bgFlood"><span>只移除跟邊緣相連的背景</span></label>
+  </details>
+
+  <details open>
+    <summary>顏色</summary>
+    <label class="row"><span>調色盤</span><select data-k="palette" id="palSel"></select></label>
+    <label class="row" id="colorsRow"><span id="colorsLabel">顏色數</span><input type="range" data-k="colors" min="2" max="64"><output></output></label>
+    <label class="row chk" id="limitRow"><input type="checkbox" data-k="limitFixed"><span>只用調色盤裡最常用的 N 色</span></label>
+    <div id="customBox"><textarea data-k="customPal" placeholder="每行一個顏色，例如 #141b1b"></textarea></div>
+    <div class="hint">所有方向、所有幀共用同一組顏色。</div>
+  </details>
+
+  <details open>
+    <summary>外框與修飾</summary>
+    <label class="row"><span>外框</span>
+      <select data-k="outline"><option value="none">無</option><option value="outer">外側加 1px 外框</option><option value="inner">內側描邊</option></select></label>
+    <div class="row" id="olRow"><span>外框顏色</span><input type="color" data-k="outlineColor">
+      <select data-k="outlineN"><option value="4">上下左右</option><option value="8">含斜角</option></select></div>
+    <label class="row chk"><input type="checkbox" data-k="cleanFloat"><span>移除孤立的單顆像素</span></label>
+    <label class="row chk"><input type="checkbox" data-k="cleanSpeck"><span>清除色塊中的雜色點</span></label>
+  </details>
+
+  <details open>
+    <summary>預覽與輸出</summary>
+    <label class="row"><span>預覽背景</span>
+      <select data-k="previewBg"><option value="grass">草地</option><option value="camp">泥土</option><option value="checker">棋盤格</option><option value="black">黑</option><option value="white">白</option></select></label>
+    <label class="row"><span>檔名開頭</span><input type="text" data-k="fname"></label>
+    <label class="row"><span>放大版倍率</span>
+      <select data-k="exportScale"><option value="2">2 倍</option><option value="4">4 倍</option><option value="8">8 倍</option></select></label>
+  </details>
+</aside>
+
+<main>
+  <section class="card">
+    <h3>1. 放入圖片 <small>點空格子選圖、把圖拖到格子上，或一次拖多張（檔名有 front / back / side 會自動分類）。點格子裡的圖可以框選要用的範圍。</small></h3>
+    <div class="sheetbar">
+      <button class="primary" id="btnSheet">載入三視圖（一張圖裡有多個角度）</button>
+      <span style="color:var(--dim)">由左到右是</span>
+      <select data-k="sheetOrder">
+        <option value="front,side,back">正面、側面、背面</option>
+        <option value="front,back,side">正面、背面、側面</option>
+        <option value="side,front,back">側面、正面、背面</option>
+        <option value="back,side,front">背面、側面、正面</option>
+        <option value="front,frontDiag,side,back">正面、斜前方、側面、背面（四視圖）</option>
+        <option value="front,frontDiag,side,backDiag,back">正面、斜前方、側面、斜後方、背面（五視圖）</option>
+      </select>
+      <input type="file" id="sheetIn" accept="image/*" hidden>
+      <span id="sheetMsg"></span>
+    </div>
+    <div class="slots" id="slots"></div>
+    <div id="warn"></div>
+    <input type="file" id="fileIn" accept="image/*" hidden>
+  </section>
+
+  <section class="card" id="baseCard" hidden>
+    <h3>2. 基礎圖 <small>確認縮小後的樣子和腳的位置</small></h3>
+    <div class="prev" id="basePrev"></div>
+  </section>
+
+  <section class="card" id="rigCard" hidden>
+    <h3>關節點 <small>拖曳圓點調整關節位置（在原圖上調，比在小圖上準）。改完會自動重新產生動畫。</small></h3>
+    <div class="sheetbar">
+      <button id="rigAuto">全部重新自動偵測</button>
+      <button id="rigCopy" title="批次轉換時要用這組關節點：把複製的內容存成角色資料夾裡的 settings.json">複製關節點（給批次用）</button>
+      <label class="row chk" style="margin:0"><input type="checkbox" id="rigTint" checked><span>顯示分區顏色</span></label>
+      <span class="hint" style="margin:0">紅＝左腳／腳、橘＝右腳／後腳、藍＝左手／手、綠＝右手；灰色是身體（不會動）</span>
+    </div>
+    <div class="prev" id="rigPrev"></div>
+  </section>
+
+  <section class="card" id="animCard" hidden>
+    <h3>3. 動畫預覽</h3>
+    <div id="animPrev"></div>
+  </section>
+
+  <section class="card" id="sheetCard" hidden>
+    <h3>4. 精靈圖 <small id="info"></small></h3>
+    <div class="prev" id="sheets"></div>
+    <div class="hint" style="margin-top:8px">直欄是方向：下、上、左、右（跟遊戲現有角色一樣），8 方向時後面再接左下、右下、左上、右上；橫列是動畫幀。每個動作一張圖，攻擊的格子比較大。</div>
+    <div class="dl">
+      <button class="primary" id="dlAll">全部下載</button>
+      <button id="dlBig">下載放大預覽版（走路＋待機）</button>
+    </div>
+  </section>
+</main>
+</div>
+<div id="drop">放開以載入圖片</div>
+<div class="modal" id="cropModal" hidden>
+  <div class="modal-box">
+    <h3 id="cropTitle">框選範圍</h3>
+    <div class="hint" style="margin:0">按住拖曳畫出範圍；拖曳框內可以移動，拖曳邊或角可以調整大小。框裡只留一個人物，旁邊的文字或其他角度不要框進去。</div>
+    <div class="crop-stage"><canvas id="cropCv"></canvas></div>
+    <div class="modal-bar">
+      <button id="cropAuto">自動框選人物</button>
+      <button id="cropFull">整張圖</button>
+      <span id="cropInfo" style="color:var(--dim);font-size:12px"></span>
+      <span class="sp"></span>
+      <button id="cropCancel">取消</button>
+      <button class="primary" id="cropOk">確定</button>
+    </div>
+  </div>
+</div>
+
+<script src="tool-nav.js"></script>
+<script src="pixel-core.js"></script>
+<script src="sprite-core.js"></script>
+<script src="rig-core.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 存不了就略過 */ } },
+};
+
+const DEFAULTS = Object.assign({}, SPRITE_DEFAULTS, RIG_DEFAULTS);
+
+// ---------- 設定 ----------
+$('sizeSel').innerHTML = SIZES.map(p => `<option value="${p.id}">${p.label}</option>`).join('');
+$('palSel').innerHTML = Object.entries(PALETTES).filter(([k]) => k !== 'none').map(([k, p]) => `<option value="${k}">${p.label}</option>`).join('');
+const controls = [...document.querySelectorAll('[data-k]')];
+function readSettings() {
+  const s = {};
+  for (const el of controls) {
+    const k = el.dataset.k;
+    s[k] = el.type === 'checkbox' ? el.checked : (el.type === 'range' || el.type === 'number') ? Number(el.value) || 0 : el.value;
+  }
+  s.dither = 'none'; s.ditherStr = 0;
+  return s;
+}
+function writeSettings(s) {
+  for (const el of controls) {
+    const k = el.dataset.k; if (!(k in s)) continue;
+    if (el.type === 'checkbox') el.checked = !!s[k]; else el.value = s[k];
+    if (el.type === 'range') el.nextElementSibling.textContent = el.value;
+  }
+}
+
+// ---------- 圖片欄位 ----------
+// images[id] = { name, full（整張原圖）, rect（框選範圍，null = 整張）, data（框選後的圖）, bg（背景色偵測結果） }
+const images = {};
+let targetSlot = null, imgVer = 0; // imgVer：圖片或框選有變就 +1
+function renderSlots() {
+  $('slots').innerHTML = SLOTS.map(sl => {
+    const im = images[sl.id];
+    return `
+    <div class="slot ${sl.req ? '' : 'opt'} ${im ? 'has' : ''}" data-id="${sl.id}">
+      <div class="lbl"><b>${sl.label}</b>　${sl.sub}</div>
+      ${im && im.rect ? '<span class="crop-tag">已框選</span>' : ''}
+      ${im ? '<canvas class="checker" title="點一下框選範圍"></canvas>' : '<div class="ph">點這裡選圖<br>或拖曳圖片</div>'}
+      <div class="btns">${im ? '<button data-a="crop">框選</button><button data-a="pick">更換</button><button data-a="clear">清除</button>' : ''}</div>
+    </div>`;
+  }).join('');
+  for (const el of $('slots').querySelectorAll('.slot')) {
+    const im = images[el.dataset.id]; if (!im) continue;
+    const c = el.querySelector('canvas'); c.width = im.data.width; c.height = im.data.height; c.getContext('2d').putImageData(im.data, 0, 0);
+  }
+}
+$('slots').addEventListener('click', e => {
+  const slot = e.target.closest('.slot'); if (!slot) return;
+  const id = slot.dataset.id, a = e.target.dataset.a;
+  if (a === 'clear') { delete images[id]; imgVer++; renderSlots(); schedule(); return; }
+  if (a === 'crop' || (e.target.tagName === 'CANVAS' && images[id])) { openCrop(id); return; }
+  if (a === 'pick' || e.target.closest('.ph')) { targetSlot = id; $('fileIn').click(); }
+});
+$('fileIn').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f && targetSlot) loadInto(targetSlot, f); };
+$('slots').addEventListener('dragover', e => { const s = e.target.closest('.slot'); if (s) { e.preventDefault(); s.classList.add('over'); } });
+$('slots').addEventListener('dragleave', e => { const s = e.target.closest('.slot'); if (s) s.classList.remove('over'); });
+$('slots').addEventListener('drop', e => {
+  const s = e.target.closest('.slot'); if (!s) return;
+  e.preventDefault(); e.stopPropagation(); s.classList.remove('over'); endDrag();
+  const f = [...e.dataTransfer.files].find(f => f.type.startsWith('image/')); if (f) loadInto(s.dataset.id, f);
+});
+
+function setImage(id, full, name, rect = null) {
+  images[id] = { name, full, rect: null, data: full, bg: autoBg(full) };
+  setRect(id, rect, true);
+  if (id === 'front' && name && name !== 'demo') {
+    const base = name.replace(/\.[^.]+$/, '').replace(/[_\-\s]*(front|正面|down|三視圖|turnaround|sheet)$/i, '');
+    if (base) writeSettings({ fname: base });
+  }
+  renderSlots(); schedule();
+}
+// 設定框選範圍（null 或整張 = 不框選）
+function setRect(id, rect, quiet) {
+  const im = images[id], W = im.full.width, H = im.full.height;
+  if (rect) {
+    const x = clamp(Math.round(rect.x), 0, W - 1), y = clamp(Math.round(rect.y), 0, H - 1);
+    rect = { x, y, w: clamp(Math.round(rect.w), 1, W - x), h: clamp(Math.round(rect.h), 1, H - y) };
+    if (rect.w === W && rect.h === H) rect = null;
+  }
+  im.rect = rect; imgVer++;
+  im.data = rect ? crop(im.full, rect.x, rect.y, rect.w, rect.h) : im.full;
+  if (!quiet) { renderSlots(); schedule(); }
+}
+function loadInto(id, file) { loadBlob(file, img => setImage(id, imageToData(img, 2048), file.name)); }
+
+
+// 一張三視圖 → 放進三格並自動框選
+$('btnSheet').onclick = () => $('sheetIn').click();
+$('sheetIn').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) loadSheet(f); };
+function loadSheet(file) { loadBlob(file, img => applySheet(imageToData(img, 2048), file.name)); }
+function applySheet(full, name) {
+  const rects = detectFigures(full, readSettings());
+  const order = readSettings().sheetOrder.split(',');
+  const names = { front: '正面', back: '背面', side: '側面', frontDiag: '斜前方', backDiag: '斜後方' };
+  order.forEach((id, i) => setImage(id, full, name, rects[i] || null));
+  $('sheetMsg').textContent = rects.length >= order.length
+    ? `找到 ${rects.length} 個人物，已依序框選成「${order.map(o => names[o]).join('、')}」。範圍不對的話，點格子裡的圖調整。`
+    : `只找到 ${rects.length} 個人物，請點各格的圖手動框選。`;
+}
+
+// ---------- 框選視窗 ----------
+const cropState = { id: null, img: null, rect: null, z: 1, drag: null, figs: null, figIdx: -1 };
+const cropBuf = document.createElement('canvas');
+function openCrop(id) {
+  const im = images[id], full = im.full, st = cropState;
+  st.id = id; st.img = full; st.figs = null; st.figIdx = -1;
+  st.rect = im.rect ? { ...im.rect } : { x: 0, y: 0, w: full.width, h: full.height };
+  $('cropTitle').textContent = `框選「${SLOTS.find(s => s.id === id).label}」要用的範圍`;
+  cropBuf.width = full.width; cropBuf.height = full.height; cropBuf.getContext('2d').putImageData(full, 0, 0);
+  $('cropModal').hidden = false;
+  const maxW = Math.max(200, innerWidth - 90), maxH = Math.max(200, innerHeight - 190);
+  st.z = Math.min(maxW / full.width, maxH / full.height, 8);
+  if (st.z >= 1) st.z = Math.floor(st.z);
+  const cv = $('cropCv'); cv.width = Math.round(full.width * st.z); cv.height = Math.round(full.height * st.z);
+  drawCrop();
+}
+function closeCrop() { $('cropModal').hidden = true; cropState.drag = null; }
+function drawCrop() {
+  const st = cropState, cv = $('cropCv'), ctx = cv.getContext('2d'), z = st.z, r = st.rect;
+  ctx.imageSmoothingEnabled = z < 1;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(cropBuf, 0, 0, cv.width, cv.height);
+  const sx = r.x * z, sy = r.y * z, sw = r.w * z, sh = r.h * z;
+  ctx.fillStyle = 'rgba(0,0,0,.6)';
+  ctx.fillRect(0, 0, cv.width, sy); ctx.fillRect(0, sy + sh, cv.width, cv.height - sy - sh);
+  ctx.fillRect(0, sy, sx, sh); ctx.fillRect(sx + sw, sy, cv.width - sx - sw, sh);
+  ctx.strokeStyle = '#e0a040'; ctx.lineWidth = 2; ctx.strokeRect(sx + 1, sy + 1, Math.max(0, sw - 2), Math.max(0, sh - 2));
+  ctx.fillStyle = '#e0a040';
+  for (const [hx, hy] of [[sx, sy], [sx + sw / 2, sy], [sx + sw, sy], [sx, sy + sh / 2], [sx + sw, sy + sh / 2], [sx, sy + sh], [sx + sw / 2, sy + sh], [sx + sw, sy + sh]])
+    ctx.fillRect(hx - 4, hy - 4, 8, 8);
+  $('cropInfo').textContent = `範圍 ${r.w}×${r.h} px（原圖 ${st.img.width}×${st.img.height}）`;
+}
+function cropPoint(e) {
+  const cv = $('cropCv'), b = cv.getBoundingClientRect(), st = cropState;
+  const px = (e.clientX - b.left) * cv.width / b.width, py = (e.clientY - b.top) * cv.height / b.height;
+  return { sx: px, sy: py, x: clamp(px / st.z, 0, st.img.width), y: clamp(py / st.z, 0, st.img.height) };
+}
+// 滑鼠在框的哪裡：邊、角、裡面或外面
+function cropHit(p) {
+  const r = cropState.rect, z = cropState.z, T = 9;
+  const L = r.x * z, R = (r.x + r.w) * z, Tp = r.y * z, B = (r.y + r.h) * z;
+  const inY = p.sy > Tp - T && p.sy < B + T, inX = p.sx > L - T && p.sx < R + T;
+  const e = { l: inY && Math.abs(p.sx - L) < T, r: inY && Math.abs(p.sx - R) < T, t: inX && Math.abs(p.sy - Tp) < T, b: inX && Math.abs(p.sy - B) < T };
+  if (e.l || e.r || e.t || e.b) return { mode: 'resize', e };
+  if (p.sx > L && p.sx < R && p.sy > Tp && p.sy < B) return { mode: 'move' };
+  return { mode: 'new' };
+}
+const CURSORS = { lt: 'nwse-resize', rb: 'nwse-resize', rt: 'nesw-resize', lb: 'nesw-resize', l: 'ew-resize', r: 'ew-resize', t: 'ns-resize', b: 'ns-resize' };
+$('cropCv').addEventListener('pointerdown', e => {
+  const p = cropPoint(e), h = cropHit(p);
+  cropState.drag = { ...h, start: p, orig: { ...cropState.rect } };
+  $('cropCv').setPointerCapture(e.pointerId);
+});
+$('cropCv').addEventListener('pointermove', e => {
+  const st = cropState, p = cropPoint(e), cv = $('cropCv');
+  if (!st.drag) {
+    const h = cropHit(p);
+    cv.style.cursor = h.mode === 'move' ? 'move' : h.mode === 'new' ? 'crosshair'
+      : CURSORS[(h.e.l ? 'l' : h.e.r ? 'r' : '') + (h.e.t ? 't' : h.e.b ? 'b' : '')] || CURSORS[h.e.t ? 't' : 'b'];
+    return;
+  }
+  const d = st.drag, o = d.orig, W = st.img.width, H = st.img.height;
+  if (d.mode === 'new') {
+    const x0 = Math.min(d.start.x, p.x), y0 = Math.min(d.start.y, p.y);
+    st.rect = { x: Math.floor(x0), y: Math.floor(y0), w: Math.max(1, Math.round(Math.abs(p.x - d.start.x))), h: Math.max(1, Math.round(Math.abs(p.y - d.start.y))) };
+  } else if (d.mode === 'move') {
+    st.rect = { ...o, x: Math.round(clamp(o.x + p.x - d.start.x, 0, W - o.w)), y: Math.round(clamp(o.y + p.y - d.start.y, 0, H - o.h)) };
+  } else {
+    let L = o.x, T = o.y, R = o.x + o.w, B = o.y + o.h;
+    if (d.e.l) L = Math.min(Math.round(p.x), R - 1); if (d.e.r) R = Math.max(Math.round(p.x), L + 1);
+    if (d.e.t) T = Math.min(Math.round(p.y), B - 1); if (d.e.b) B = Math.max(Math.round(p.y), T + 1);
+    st.rect = { x: L, y: T, w: R - L, h: B - T };
+  }
+  st.rect.w = Math.min(st.rect.w, W - st.rect.x); st.rect.h = Math.min(st.rect.h, H - st.rect.y);
+  drawCrop();
+});
+$('cropCv').addEventListener('pointerup', () => {
+  const st = cropState;
+  // 只是點一下（沒拖曳）就不要變成 1×1 的框
+  if (st.drag && st.drag.mode === 'new' && (st.rect.w < 4 || st.rect.h < 4)) { st.rect = st.drag.orig; drawCrop(); }
+  st.drag = null;
+});
+$('cropAuto').onclick = () => {
+  const st = cropState;
+  if (!st.figs) st.figs = detectFigures(st.img, readSettings());
+  if (!st.figs.length) { $('cropInfo').textContent = '找不到人物，請手動框選。'; return; }
+  st.figIdx = (st.figIdx + 1) % st.figs.length;
+  st.rect = { ...st.figs[st.figIdx] }; drawCrop();
+  $('cropInfo').textContent += `　（第 ${st.figIdx + 1} / ${st.figs.length} 個人物，再按一次換下一個）`;
+};
+$('cropFull').onclick = () => { const st = cropState; st.rect = { x: 0, y: 0, w: st.img.width, h: st.img.height }; drawCrop(); };
+$('cropCancel').onclick = closeCrop;
+$('cropOk').onclick = () => { setRect(cropState.id, cropState.rect); closeCrop(); };
+$('cropModal').addEventListener('pointerdown', e => { if (e.target === $('cropModal')) closeCrop(); });
+addEventListener('keydown', e => {
+  if ($('cropModal').hidden) return;
+  if (e.key === 'Escape') closeCrop();
+  if (e.key === 'Enter') $('cropOk').click();
+});
+
+function openFiles(files) {
+  files = [...files].filter(f => f.type.startsWith('image/'));
+  // 先放檔名猜得出來的，剩下的依序放進空格
+  const taken = new Set(), rest = [];
+  for (const f of files) {
+    const id = guessSlot(f.name);
+    if (id && !taken.has(id)) { taken.add(id); loadInto(id, f); } else rest.push(f);
+  }
+  for (const f of rest) {
+    const empty = SLOTS.find(sl => !images[sl.id] && !taken.has(sl.id));
+    if (!empty) break;
+    taken.add(empty.id); loadInto(empty.id, f);
+  }
+}
+
+
+let gen = null; // 最後結果
+// 骨架模式的關節點：圖片或側面朝向改變時重新自動偵測
+const rigJ = { key: '', joints: {} };
+function run() {
+  const s = readSettings();
+  store.set('spgen.settings', s);
+  updateUI(s);
+  const rigMode = s.animMode === 'rig', rk = imgVer + '|' + s.sideFacing;
+  if (rigJ.key !== rk) { rigJ.key = rk; rigJ.joints = {}; }
+  const res = rigMode ? generateRigSprite(images, s, rigJ.joints, imgVer) : generateSprite(images, s, imgVer);
+  if (rigMode && res.rig) for (const id in res.rig) if (!rigJ.joints[id]) rigJ.joints[id] = res.rig[id].joints;
+  $('warn').innerHTML = res.warn.join('<br>');
+  const ok = !!res.walkSheet;
+  for (const id of ['baseCard', 'animCard', 'sheetCard']) $(id).hidden = !ok;
+  $('rigCard').hidden = !ok || !rigMode;
+  if (!ok) { gen = null; stopAnim(); return; }
+  gen = Object.assign({ s, frames: 4 }, res);
+  // 簡易做法只有走路和站姿；整理成跟骨架做法一樣的「動作清單」
+  if (!gen.actions) gen.actions = [
+    { id: 'walk', label: '走路', name: 'Walk', W: gen.W, H: gen.H, N: 4, dirs: gen.walk, sheet: gen.walkSheet },
+    { id: 'idle', label: '待機', name: 'Idle', W: gen.W, H: gen.H, N: 1, dirs: gen.idle.map(f => [f]), sheet: gen.idleSheet },
+  ];
+  render();
+  if (rigMode) renderRig();
+}
+
+// ---------- 關節點編輯 ----------
+const RIG_VIEW_H = 320; // 編輯畫面上人物的高度
+const RIG_COLORS = { legL: [235, 70, 70], leg: [235, 70, 70], legR: [245, 155, 40], armL: [70, 130, 245], arm: [70, 130, 245], armR: [60, 195, 95] };
+let rigDrag = null;
+function renderRig() {
+  const box = $('rigPrev');
+  if (box.children.length !== 3) {
+    box.innerHTML = [['front', '正面'], ['side', '側面（計算時朝左）'], ['back', '背面']].map(([id, l]) =>
+      `<figure><canvas class="rigcv" data-id="${id}" style="touch-action:none;cursor:crosshair;display:block"></canvas><figcaption>${l}</figcaption></figure>`).join('');
+    for (const cv of box.querySelectorAll('canvas')) bindRigCanvas(cv);
+  }
+  for (const id in gen.rig) gen.rig[id].tint = null;
+  for (const cv of box.querySelectorAll('canvas')) drawRig(cv);
+}
+function rigTint(r) {
+  if (r.tint) return r.tint;
+  const w = r.work;
+  const src = document.createElement('canvas'); src.width = w.width; src.height = w.height; src.getContext('2d').putImageData(w, 0, 0);
+  if (!r.labels) return (r.tint = { tint: null, src }); // Q 版時沒有分區顏色
+  const img = new ImageData(w.width, w.height), d = img.data, names = Object.keys(RIG_LIMBS[r.kind]);
+  for (let p = 0; p < r.labels.length; p++) {
+    const l = r.labels[p]; if (l < 0) continue;
+    let c = [150, 150, 160], a = 70;
+    if (l > 0) { c = RIG_COLORS[names[(l - 1) >> 1]]; a = (l - 1) & 1 ? 150 : 110; }
+    d[p * 4] = c[0]; d[p * 4 + 1] = c[1]; d[p * 4 + 2] = c[2]; d[p * 4 + 3] = a;
+  }
+  const c = document.createElement('canvas'); c.width = w.width; c.height = w.height; c.getContext('2d').putImageData(img, 0, 0);
+  return (r.tint = { tint: c, src });
+}
+function drawRig(cv) {
+  const id = cv.dataset.id, r = gen && gen.rig && gen.rig[id]; if (!r) return;
+  const HN = r.work.height, z = RIG_VIEW_H / HN, J = rigJ.joints[id], t = rigTint(r);
+  cv.width = Math.round(r.work.width * z) + 40; cv.height = RIG_VIEW_H + 20;
+  const ctx = cv.getContext('2d'), ox = 20, oy = 10;
+  ctx.fillStyle = '#f4f4f4'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(t.src, ox, oy, r.work.width * z, HN * z);
+  if ($('rigTint').checked && t.tint) ctx.drawImage(t.tint, ox, oy, r.work.width * z, HN * z);
+  const P = k => [ox + J[k].x * HN * z, oy + J[k].y * HN * z];
+  ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(20,20,30,.75)';
+  for (const [a, b] of RIG_BONES[r.kind]) { const [x1, y1] = P(a), [x2, y2] = P(b); ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); }
+  ctx.font = '11px sans-serif';
+  for (const k of RIG_JOINTS[r.kind]) {
+    const [x, y] = P(k), on = rigDrag && rigDrag.id === id && rigDrag.k === k;
+    ctx.beginPath(); ctx.arc(x, y, on ? 7 : 5, 0, Math.PI * 2);
+    ctx.fillStyle = on ? '#ffd23f' : '#e0a040'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#1b1d24'; ctx.stroke();
+    if (on) { ctx.fillStyle = '#1b1d24'; ctx.fillText(RIG_JOINT_LABELS[k], x + 9, y - 6); }
+  }
+}
+function bindRigCanvas(cv) {
+  const pos = e => { const b = cv.getBoundingClientRect(); return [(e.clientX - b.left) * cv.width / b.width, (e.clientY - b.top) * cv.height / b.height]; };
+  cv.addEventListener('pointerdown', e => {
+    const id = cv.dataset.id, r = gen.rig[id], J = rigJ.joints[id], HN = r.work.height, z = RIG_VIEW_H / HN, [mx, my] = pos(e);
+    let best = null, bd = 14;
+    for (const k of RIG_JOINTS[r.kind]) { const d = Math.hypot(20 + J[k].x * HN * z - mx, 10 + J[k].y * HN * z - my); if (d < bd) { bd = d; best = k; } }
+    if (!best) return;
+    rigDrag = { id, k: best, z, HN }; cv.setPointerCapture(e.pointerId); drawRig(cv);
+  });
+  cv.addEventListener('pointermove', e => {
+    if (!rigDrag || rigDrag.id !== cv.dataset.id) return;
+    const [mx, my] = pos(e), { z, HN } = rigDrag;
+    rigJ.joints[rigDrag.id] = Object.assign({}, rigJ.joints[rigDrag.id], { [rigDrag.k]: { x: (mx - 20) / z / HN, y: (my - 10) / z / HN } });
+    drawRig(cv);
+  });
+  cv.addEventListener('pointerup', () => { if (rigDrag) { rigDrag = null; schedule(); } });
+}
+$('rigAuto').onclick = () => { rigJ.joints = {}; schedule(); };
+// 關節點存成 settings.json 的格式（數字留 4 位小數就夠）
+$('rigCopy').onclick = async () => {
+  const round = o => JSON.parse(JSON.stringify(o, (k, v) => typeof v === 'number' ? Math.round(v * 1e4) / 1e4 : v));
+  const text = JSON.stringify({ joints: round(rigJ.joints) });
+  try { await navigator.clipboard.writeText(text); alert('已複製。到批次轉換的角色資料夾裡新增 settings.json，貼上存檔，批次就會用這組關節點。\n（已經有 settings.json 的話，把 "joints" 這一項加進去）'); }
+  catch (e) { prompt('複製下面的內容，存成角色資料夾裡的 settings.json：', text); }
+};
+$('rigTint').onchange = () => { for (const cv of $('rigPrev').querySelectorAll('canvas')) drawRig(cv); };
+let pending = false;
+function schedule() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; run(); }); }
+
+// ---------- 畫面 ----------
+const buf = document.createElement('canvas');
+function drawScaled(cv, img, z) {
+  buf.width = img.width; buf.height = img.height; buf.getContext('2d').putImageData(img, 0, 0);
+  cv.width = img.width * z; cv.height = img.height * z;
+  const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.drawImage(buf, 0, 0, cv.width, cv.height);
+  return ctx;
+}
+const bgClass = s => 'stagebox ' + (s.previewBg === 'checker' ? 'checker' : 'bg-' + s.previewBg);
+
+function render() {
+  const { s, W, H, base } = gen;
+  const z = clamp(Math.floor(240 / Math.max(W, H)), 1, 16);
+  // 基礎圖 + 腳的參考線
+  const list = [['front', '正面'], ['back', '背面'], ['side', '側面']];
+  for (const id of ['frontDiag', 'backDiag']) if (base.sprites[id] && s.dirCount === '8') list.push([id, SLOTS.find(x => x.id === id).label + (base.synth[id] ? '（自動產生）' : '')]);
+  for (const id of ['frontStep', 'backStep', 'sideStep']) if (images[id]) list.push([id, SLOTS.find(x => x.id === id).label]);
+  $('basePrev').innerHTML = list.map(([id, l]) => `<figure><div class="${bgClass(s)}"><canvas class="px" data-id="${id}"></canvas></div><figcaption>${l}</figcaption></figure>`).join('');
+  for (const cv of $('basePrev').querySelectorAll('canvas')) {
+    const img = base.sprites[cv.dataset.id], ctx = drawScaled(cv, img, z);
+    if (!s.guides || s.animMode === 'rig') continue;
+    const L = legInfo(img, s); if (!L) continue;
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ff3b3b'; ctx.beginPath(); ctx.moveTo(0, L.legTop * z); ctx.lineTo(W * z, L.legTop * z); ctx.stroke();
+    if (!cv.dataset.id.startsWith('side')) {
+      ctx.strokeStyle = '#3b8bff'; ctx.beginPath(); ctx.moveTo(L.splitX * z, L.legTop * z); ctx.lineTo(L.splitX * z, (L.legBottom + 1) * z); ctx.stroke();
+    }
+  }
+  // 動畫預覽：每個動作一列，每個方向一格
+  const acts = gen.actions, C = gen.cols;
+  const sig = acts.map(a => `${a.id}:${a.N}:${a.W}x${a.H}`).join() + '|' + C + '|' + z;
+  if ($('animPrev').dataset.sig !== sig) {
+    $('animPrev').dataset.sig = sig;
+    $('animPrev').innerHTML = acts.map((a, ai) => `<div class="actrow"><div class="actlbl">${a.label}<small>${a.N} 幀・每格 ${a.W}×${a.H}</small></div>` +
+      DIRS.slice(0, C).map((d, i) => `<figure><div class="stagebox"><canvas class="px" data-a="${ai}" data-d="${i}"></canvas></div><figcaption>${d}</figcaption></figure>`).join('') + '</div>').join('');
+  }
+  for (const box of $('animPrev').querySelectorAll('.stagebox')) box.className = bgClass(s);
+  animZoom = z; startAnim(s.ms); animTick();
+  // 精靈圖：每個動作一張，各自有下載按鈕
+  $('sheets').innerHTML = acts.map((a, ai) => `<figure class="sheetfig"><div class="${bgClass(s)}"><canvas class="px" data-a="${ai}"></canvas></div>
+    <figcaption>${a.name}.png（${a.label}，${a.N} 幀，每格 ${a.W}×${a.H}）</figcaption><button data-dl="${ai}">下載 ${a.name}.png</button></figure>`).join('');
+  for (const cv of $('sheets').querySelectorAll('canvas')) {
+    const a = acts[+cv.dataset.a], zs = clamp(Math.floor(Math.min((C === 8 ? 900 : 520) / (C * a.W), 420 / (a.N * a.H))), 1, 12);
+    drawSheet(cv, a.sheet, zs, C, a.N);
+  }
+  // 弓箭手：遊戲裡射出去的箭
+  if (gen.projectile) {
+    $('sheets').insertAdjacentHTML('beforeend', `<figure class="sheetfig"><div class="${bgClass(s)}"><canvas class="px" id="projCv"></canvas></div>
+      <figcaption>Arrow.png（遊戲裡射出去的箭，${gen.projectile.width}×${gen.projectile.height}）</figcaption><button id="dlProj">下載 Arrow.png</button></figure>`);
+    drawScaled($('projCv'), gen.projectile, 6);
+    $('dlProj').onclick = () => saveImage(gen.projectile, prefix() + '_Arrow.png');
+  }
+  const colors = countColors(acts.map(a => a.sheet)).size;
+  $('info').textContent = `走路每格 ${W}×${H}，${C} 方向，共 ${colors} 色`;
+}
+$('sheets').addEventListener('click', e => {
+  const i = e.target.dataset.dl; if (i == null || !gen) return;
+  const a = gen.actions[+i]; saveImage(a.sheet, prefix() + '_' + a.name + '.png');
+});
+function drawSheet(cv, img, z, cols, rows) {
+  const ctx = drawScaled(cv, img, z), cw = img.width / cols * z, ch = img.height / rows * z;
+  ctx.strokeStyle = 'rgba(224,160,64,.8)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let c = 1; c < cols; c++) { ctx.moveTo(c * cw + 0.5, 0); ctx.lineTo(c * cw + 0.5, rows * ch); }
+  for (let r = 1; r < rows; r++) { ctx.moveTo(0, r * ch + 0.5); ctx.lineTo(cols * cw, r * ch + 0.5); }
+  ctx.stroke();
+}
+
+let animTimer = null, animMs = 0, animPos = 0, animZoom = 4;
+function animTick() {
+  if (!gen) return;
+  for (const cv of $('animPrev').querySelectorAll('canvas')) {
+    const a = gen.actions[+cv.dataset.a]; if (!a) continue;
+    drawScaled(cv, a.dirs[+cv.dataset.d][animPos % a.N], animZoom);
+  }
+  animPos = (animPos + 1) % 840; // 840 可以被 2～8 整除
+}
+function startAnim(ms) {
+  if (animTimer && ms === animMs) { return; }
+  stopAnim(); animMs = ms; animTimer = setInterval(animTick, ms); animTick();
+}
+function stopAnim() { clearInterval(animTimer); animTimer = null; animMs = 0; }
+
+function updateUI(s) {
+  const fixed = s.palette !== 'auto';
+  $('colorsRow').classList.toggle('disabled', fixed && !s.limitFixed);
+  $('colorsLabel').textContent = fixed ? '最多色數' : '顏色數';
+  $('limitRow').hidden = !fixed;
+  $('customBox').hidden = s.palette !== 'custom';
+  $('olRow').classList.toggle('disabled', s.outline === 'none');
+  $('diagBox').hidden = s.dirCount !== '8' || s.animMode === 'rig';
+  $('rigBox').hidden = s.animMode !== 'rig';
+  $('pixBox').hidden = s.animMode === 'rig';
+  $('chibiBox').hidden = !s.chibiOn;
+  $('runBox').hidden = !s.actRun;
+  $('atkBox').hidden = !s.actAtk;
+  $('bgManualRow').hidden = s.bgMode !== 'manual';
+}
+
+// ---------- 下載 ----------
+function saveImage(img, name, scale = 1) {
+  const c = document.createElement('canvas'); drawScaled(c, img, scale);
+  c.toBlob(blob => {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }, 'image/png');
+}
+const prefix = () => ((gen && gen.s.fname) || 'Hero').replace(/[\\/:*?"<>|]/g, '_');
+$('dlAll').onclick = () => { if (gen) gen.actions.forEach((a, i) => setTimeout(() => saveImage(a.sheet, prefix() + '_' + a.name + '.png'), i * 300)); };
+$('dlBig').onclick = () => {
+  if (!gen) return;
+  // 走路和站姿疊在一起的放大版，方便給別人看
+  const { W, H, cols, frames: N } = gen, all = new ImageData(W * cols, H * (N + 1));
+  all.data.set(gen.walkSheet.data, 0); all.data.set(gen.idleSheet.data, W * cols * H * N * 4);
+  saveImage(all, prefix() + `_preview@${gen.s.exportScale}x.png`, Number(gen.s.exportScale) || 4);
+};
+
+// ---------- 範例圖 ----------
+function demoViews(asSheet) {
+  const mk = draw => { const c = document.createElement('canvas'); c.width = 240; c.height = 360; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 240, 360); draw(x); return x.getImageData(0, 0, 240, 360); };
+  const grad = (x, x0, y0, r, a, b) => { const g = x.createRadialGradient(x0 - r * .3, y0 - r * .3, r * .1, x0, y0, r); g.addColorStop(0, a); g.addColorStop(1, b); return g; };
+  const legsFront = x => { x.fillStyle = '#3a3550'; x.fillRect(92, 268, 24, 64); x.fillRect(124, 268, 24, 64); x.fillStyle = '#5b3a24'; x.fillRect(88, 328, 30, 16); x.fillRect(122, 328, 30, 16); };
+  const body = (x, x0, x1) => { x.fillStyle = grad(x, 120, 220, 110, '#5a7fd0', '#22306a'); x.beginPath(); x.moveTo(x0 + 10, 160); x.lineTo(x1 - 10, 160); x.lineTo(x1, 275); x.lineTo(x0, 275); x.closePath(); x.fill(); x.fillStyle = '#c8962e'; x.fillRect(x0 + 4, 236, x1 - x0 - 8, 12); };
+  const front = mk(x => {
+    legsFront(x); body(x, 78, 162);
+    x.fillStyle = '#4a6cc0'; x.fillRect(62, 168, 18, 80); x.fillRect(160, 168, 18, 80);
+    x.fillStyle = '#f2c09a'; x.fillRect(62, 246, 18, 16); x.fillRect(160, 246, 18, 16);
+    x.fillStyle = grad(x, 120, 100, 60, '#ffe0c4', '#d9926a'); x.beginPath(); x.arc(120, 100, 56, 0, Math.PI * 2); x.fill();
+    x.fillStyle = grad(x, 110, 60, 80, '#e04848', '#701c2a'); x.beginPath(); x.ellipse(120, 70, 64, 40, 0, Math.PI, 0); x.lineTo(184, 100); x.lineTo(160, 80); x.lineTo(120, 92); x.lineTo(80, 80); x.lineTo(56, 100); x.closePath(); x.fill();
+    x.fillStyle = '#1b1b2a'; x.fillRect(96, 104, 10, 18); x.fillRect(134, 104, 10, 18);
+  });
+  const back = mk(x => {
+    legsFront(x); body(x, 78, 162);
+    x.fillStyle = '#4a6cc0'; x.fillRect(62, 168, 18, 80); x.fillRect(160, 168, 18, 80);
+    x.fillStyle = '#f2c09a'; x.fillRect(62, 246, 18, 16); x.fillRect(160, 246, 18, 16);
+    x.fillStyle = grad(x, 120, 90, 70, '#e04848', '#701c2a'); x.beginPath(); x.arc(120, 100, 58, 0, Math.PI * 2); x.fill();
+  });
+  const side = mk(x => {
+    x.fillStyle = '#3a3550'; x.fillRect(106, 268, 28, 64); x.fillStyle = '#5b3a24'; x.fillRect(96, 328, 40, 16);
+    body(x, 92, 150);
+    x.fillStyle = '#4a6cc0'; x.fillRect(112, 168, 20, 80); x.fillStyle = '#f2c09a'; x.fillRect(112, 246, 20, 16);
+    x.fillStyle = grad(x, 116, 100, 60, '#ffe0c4', '#d9926a'); x.beginPath(); x.arc(118, 100, 54, 0, Math.PI * 2); x.fill();
+    x.fillStyle = grad(x, 130, 70, 80, '#e04848', '#701c2a'); x.beginPath(); x.ellipse(126, 74, 58, 40, 0, Math.PI, 0); x.lineTo(176, 130); x.lineTo(150, 96); x.lineTo(100, 84); x.closePath(); x.fill();
+    x.fillStyle = '#1b1b2a'; x.fillRect(86, 104, 10, 18);
+  });
+  if (asSheet) {
+    // 三視圖範例：三個角度排一排，下面有文字標籤
+    const c = document.createElement('canvas'); c.width = 780; c.height = 420;
+    const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 780, 420);
+    [front, side, back].forEach((im, i) => {
+      const t = document.createElement('canvas'); t.width = 240; t.height = 360; t.getContext('2d').putImageData(im, 0, 0);
+      x.drawImage(t, 10 + i * 260, 0);
+    });
+    x.fillStyle = '#333'; x.font = 'bold 22px sans-serif'; x.textAlign = 'center';
+    ['FRONT', 'SIDE', 'BACK'].forEach((l, i) => x.fillText(l, 130 + i * 260, 400));
+    applySheet(x.getImageData(0, 0, 780, 420), 'demo');
+    return;
+  }
+  setImage('front', front, 'demo'); setImage('back', back, 'demo'); setImage('side', side, 'demo');
+}
+
+// ---------- 事件 ----------
+for (const el of controls) {
+  el.addEventListener('input', () => {
+    if (el.type === 'range') el.nextElementSibling.textContent = el.value;
+    if (el.id === 'sizeSel') {
+      const p = SIZES.find(x => x.id === el.value);
+      if (p && p.w) writeSettings(Object.assign({ w: p.w, h: p.h }, animDefaults(p.h)));
+    } else if (el.id === 'inW' || el.id === 'inH') {
+      const p = SIZES.find(x => x.w === +$('inW').value && x.h === +$('inH').value);
+      $('sizeSel').value = p ? p.id : 'custom';
+    }
+    schedule();
+  });
+}
+$('btnAutoAnim').onclick = () => { writeSettings(Object.assign({ legRatio: 30, legSplit: 0 }, animDefaults(readSettings().h))); schedule(); };
+$('btnDemo').onclick = () => demoViews(false);
+
+let dragDepth = 0;
+const endDrag = () => { dragDepth = 0; document.body.classList.remove('dragging'); };
+addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+addEventListener('dragleave', () => { if (--dragDepth <= 0) endDrag(); });
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => { e.preventDefault(); endDrag(); openFiles(e.dataTransfer.files); });
+addEventListener('paste', e => {
+  const item = [...((e.clipboardData || {}).items || [])].find(i => i.type.startsWith('image/'));
+  if (!item) return;
+  const empty = SLOTS.find(sl => !images[sl.id]);
+  if (empty) loadInto(empty.id, item.getAsFile());
+});
+
+// 啟動
+writeSettings(Object.assign({}, DEFAULTS, store.get('spgen.settings') || {}));
+renderSlots();
+if (location.hash.startsWith('#demo')) {
+  const patch = {};
+  for (const kv of location.hash.slice(1).split('&').slice(1)) { const [k, v] = kv.split('='); patch[k] = v === 'true' ? true : v === 'false' ? false : decodeURIComponent(v); }
+  writeSettings(patch); demoViews(!!patch.sheet);
+  if (patch.crop) setTimeout(() => openCrop(patch.crop), 300);
+} else schedule();
+</script>
+</body>
+</html>

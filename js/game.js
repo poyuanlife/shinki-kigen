@@ -65,6 +65,16 @@ const G = {
 };
 let P = null;
 G.zone = 'field';
+// 跑步：R 鍵／手機「跑」鍵切換，記在這台裝置上
+const RUN_MUL = 1.5;
+G.runOn = (() => { try { return localStorage.getItem('shinki.run') === '1'; } catch (e) { return false; } })();
+function toggleRun() {
+  G.runOn = !G.runOn;
+  try { localStorage.setItem('shinki.run', G.runOn ? '1' : '0'); } catch (e) { /* 存不了就算了 */ }
+  const how = typeof TOUCH !== 'undefined' && TOUCH ? '「跑」鍵切換' : 'R 切換';
+  addLog(G.runOn ? `跑步：開（${how}）` : `跑步：關，改用走的（${how}）`, '#8cf');
+  if (typeof TouchUI !== 'undefined' && TouchUI.syncRun) TouchUI.syncRun();
+}
 const curZone = () => ZONE_BY_ID[G.zone] || ZONES[0];
 
 // =====================================================
@@ -407,13 +417,15 @@ function rollHit(mult) {
 }
 function healP(n) { if (!P.dead) P.hp = Math.min(P.st.maxHp, P.hp + n); }
 
+// 主角的角色圖有附「射出去的東西」（例如弓箭手的箭）就用它，不然維持原本的手裏劍
+const playerShotKind = () => { const sp = SPEC[heroSpec(P)]; return sp && sp.projectile ? 'arrow' : undefined; };
 function fireBullet(src, ang, mult, opt = {}) {
   const sp = opt.speed || 17, range = opt.range || P.st.range;
   const ox = src.x + Math.cos(ang) * 0.45, oy = src.y + Math.sin(ang) * 0.45;
   G.bullets.push({
     x: ox, y: oy, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, life: range / sp,
     mult: mult * P.st.bulletMult, pierce: opt.pierce !== undefined ? opt.pierce : P.st.pierce,
-    hit: new Set(), color: opt.color || '#ffe9a0', w: opt.w || 1.6, kind: opt.kind, home: opt.home, sp,
+    hit: new Set(), color: opt.color || '#ffe9a0', w: opt.w || 1.6, kind: opt.kind || (src === P && playerShotKind()), home: opt.home, sp,
   });
   if (src === P) { P.muzzle = 0.06; P.act = { n: 'shoot', t: 0, dur: clamp(1 / P.st.aps, 0.15, 0.4) }; Snd.play(opt.kind === 'blade' ? 'slash' : 'throw'); }
 }
@@ -1225,23 +1237,26 @@ function updatePlayer(dt) {
 
   const joy = TouchUI.joy, kv = keyMoveDir();
   const moveIn = kv ? { x: kv[0], y: kv[1], mag: 1 } : (joy.on && joy.mag > 0.15 ? joy : null);
+  // 跑步（R 鍵／手機「跑」鍵切換）：速度 ×1.5，播跑步動畫（沒有跑步圖的角色用快一點的走路）
+  const runMul = G.runOn ? RUN_MUL : 1;
+  p.running = G.runOn && (!!moveIn || p.path.length > 0);
   if (moveIn) {
     p.path = []; p.goal = null; p.target = null;
-    const step = s.moveSpeed * dt * Math.min(1, moveIn.mag * 1.25);
+    const step = s.moveSpeed * runMul * dt * Math.min(1, moveIn.mag * 1.25);
     const [jx, jy] = screenToWorldDir(moveIn.x, moveIn.y);
     moveBy(p, jx * step, jy * step);
     if (!(p.buffs.gatling > 0) && !(p.act && p.act.n === 'shoot')) p.face = Math.atan2(jy, jx);
     p.moving = Math.min(1, p.moving + dt * 8);
-    p.walk += dt * 11 * (s.moveSpeed / 4);
-    p.runT += dt * (s.moveSpeed / 4);
+    p.walk += dt * 11 * (s.moveSpeed * runMul / 4);
+    p.runT += dt * (s.moveSpeed * runMul / 4);
   } else if (p.path.length) {
-    const t = p.path[0], dx = t.x - p.x, dy = t.y - p.y, d = Math.hypot(dx, dy), step = s.moveSpeed * dt;
+    const t = p.path[0], dx = t.x - p.x, dy = t.y - p.y, d = Math.hypot(dx, dy), step = s.moveSpeed * runMul * dt;
     if (d <= step) { moveBy(p, dx, dy); p.path.shift(); }
     else if (!moveBy(p, dx / d * step, dy / d * step)) p.path = [];
     if (!(p.buffs.gatling > 0)) p.face = Math.atan2(dy, dx);
     p.moving = Math.min(1, p.moving + dt * 8);
-    p.walk += dt * 11 * (s.moveSpeed / 4);
-    p.runT += dt * (s.moveSpeed / 4);
+    p.walk += dt * 11 * (s.moveSpeed * runMul / 4);
+    p.runT += dt * (s.moveSpeed * runMul / 4);
   } else p.moving = Math.max(0, p.moving - dt * 8);
 
   // 自動拾取金幣與藥劑
@@ -1903,7 +1918,7 @@ function openPanel(k) {
   renderPanel(k);
   layoutDuo();
 }
-function closePanel(k) { $(PANELS[k]).classList.add('hidden'); if (k === 'shop') G.shopOpen = false; hideTip(); layoutDuo(); }
+function closePanel(k) { if (!PANELS[k]) return; $(PANELS[k]).classList.add('hidden'); if (k === 'shop') G.shopOpen = false; hideTip(); layoutDuo(); }
 function layoutDuo() { document.documentElement.classList.toggle('duo', TOUCH && isOpen('shop') && isOpen('inv')); }
 function togglePanel(k) { isOpen(k) ? closePanel(k) : openPanel(k); }
 function renderPanel(k) { ({ char: renderChar, inv: renderInv, skill: renderSkills, shop: renderShop, travel: renderTravel })[k](); }
@@ -2350,6 +2365,7 @@ addEventListener('keydown', safe(e => {
     case 'i': case 'b': togglePanel('inv'); break;
     case 'k': togglePanel('skill'); break;
     case 't': returnToCamp(); break;
+    case 'r': if (!e.repeat) toggleRun(); break;
     case 'm': G.showMini = !G.showMini; mm.classList.toggle('hidden', !G.showMini); break;
     case 'escape': {
       if (isMenuOpen()) { closeMenu(); break; }
@@ -2363,7 +2379,8 @@ addEventListener('keydown', safe(e => {
   }
 }, '鍵盤'));
 document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => togglePanel(b.dataset.open)));
-document.querySelectorAll('.panel .close').forEach(b => b.addEventListener('click', () => closePanel(b.dataset.close)));
+// 只綁有 data-close 的關閉鈕（系統選單的 × 是 #menuClose，另外處理）
+document.querySelectorAll('.panel .close[data-close]').forEach(b => b.addEventListener('click', () => closePanel(b.dataset.close)));
 $('buyHp1').onclick = () => buyPotion('hp', 1); $('buyHp5').onclick = () => buyPotion('hp', 5);
 $('buyMp1').onclick = () => buyPotion('mp', 1); $('buyMp5').onclick = () => buyPotion('mp', 5);
 $('sellCommon').onclick = sellAllCommon;

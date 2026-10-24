@@ -27,7 +27,8 @@ const server = http.createServer((req, res) => {
       'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream',
       'Content-Length': st.size,
       // 程式碼每次都重新讀（改完重新整理就生效）；圖片可以快取
-      'Cache-Control': /\.(png|webp|jpg)$/i.test(file) ? 'max-age=3600' : 'no-cache',
+      // assets/custom 是「圖片批次轉換」做的圖，常常重做，每次都重新讀
+      'Cache-Control': /\.(png|webp|jpg)$/i.test(file) && !file.includes(path.sep + 'custom' + path.sep) ? 'max-age=3600' : 'no-cache',
     });
     fs.createReadStream(file).pipe(res);
   });

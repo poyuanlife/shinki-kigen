@@ -46,6 +46,7 @@ const TouchUI = (() => {
         <button id="tAtk" aria-label="攻擊"><span>攻擊</span></button>
         <button id="tAtkSwap" aria-label="更換攻擊鍵技能">⇄</button>
         <button id="tPick" class="hidden" aria-label="拾取裝備">拾取</button>
+        <button id="tRun" aria-label="切換跑步">跑</button>
         ${[0, 1, 2, 3].map(i => `<button class="tSk" id="tSk${i}" data-i="${i}"><span class="tIcon"></span><span class="tName"></span><div class="tCd"></div></button>`).join('')}
       </div>`;
     document.body.appendChild(ui);
@@ -75,6 +76,10 @@ const TouchUI = (() => {
     const end = e => { if (e.pointerId !== joy.id) return; Object.assign(joy, { on: false, x: 0, y: 0, mag: 0, id: null }); setKnob(0, 0); };
     zone.addEventListener('pointermove', move);
     zone.addEventListener('pointerup', end); zone.addEventListener('pointercancel', end);
+
+    // ---- 跑步鍵（切換跑／走）----
+    $('tRun').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleRun(); });
+    syncRun();
 
     // ---- 攻擊鍵（按住連續攻擊）----
     const atk = $('tAtk');
@@ -164,7 +169,7 @@ const TouchUI = (() => {
     document.querySelectorAll('.pot small').forEach(el => el.remove());
     // 手機版的操作說明
     const help = document.querySelector('#title .help');
-    if (help) help.innerHTML = `<b>手機操作</b>　左下搖桿：移動　｜　右下「攻擊」：按住自動攻擊最近的敵人　｜　技能鍵：對最近的敵人施放<br>
+    if (help) help.innerHTML = `<b>手機操作</b>　左下搖桿：移動　｜　「跑」：切換跑步　｜　右下「攻擊」：按住自動攻擊最近的敵人　｜　技能鍵：對最近的敵人施放<br>
       點怪物：攻擊　點道具：撿起　點 NPC：對話　｜　上方按鈕：角色、背包、技能、選單<br>
       <span class="dim">建議橫向遊玩；用瀏覽器選單的「加到主畫面」可以像 App 一樣全螢幕開啟</span>`;
     // 開始遊戲時順便進入全螢幕（Android 有效；iPhone 請用「加到主畫面」）
@@ -178,5 +183,8 @@ const TouchUI = (() => {
     checkRotate();
   }
 
-  return { joy, init, update, hud, aim, goFullscreen };
+  // 跑步鍵的亮暗跟著目前狀態
+  function syncRun() { const b = document.getElementById('tRun'); if (b) b.classList.toggle('on', !!G.runOn); }
+
+  return { joy, init, update, hud, aim, goFullscreen, syncRun };
 })();

@@ -1,0 +1,844 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>像素圖轉換器</title>
+<link rel="icon" href="batch-icon.png">
+<style>
+:root {
+  --bg: #1b1d24; --panel: #242733; --panel2: #2d3140; --line: #3a3f52;
+  --text: #e6e8ef; --dim: #9aa0b4; --accent: #e0a040; --accent2: #f2c471;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg); color: var(--text);
+  font: 14px/1.45 "Microsoft JhengHei", "PingFang TC", "Noto Sans TC", system-ui, sans-serif;
+  display: flex; flex-direction: column;
+}
+header {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+header h1 { font-size: 17px; margin: 0 10px 0 0; color: var(--accent2); }
+header .sp { flex: 1; }
+button, select, input[type=number], input[type=text], textarea {
+  font: inherit; color: var(--text); background: var(--panel2);
+  border: 1px solid var(--line); border-radius: 6px;
+}
+button { padding: 5px 12px; cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #1b1d24; border-color: var(--accent); font-weight: bold; }
+button.on { background: var(--accent); color: #1b1d24; }
+select, input[type=number], input[type=text] { padding: 4px 6px; }
+input[type=number] { width: 64px; }
+textarea { width: 100%; min-height: 70px; padding: 6px; font-family: Consolas, monospace; font-size: 12px; resize: vertical; }
+input[type=color] { width: 40px; height: 28px; padding: 0 2px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); }
+input[type=range] { flex: 1; min-width: 80px; accent-color: var(--accent); }
+
+.wrap { flex: 1; display: flex; min-height: 0; }
+aside {
+  width: 350px; flex: none; overflow-y: auto; background: var(--panel);
+  border-right: 1px solid var(--line); padding: 6px 12px 30px; overflow-x: hidden;
+}
+.row select, .row input[type=text] { flex: 1; min-width: 0; }
+details { border-bottom: 1px solid var(--line); padding: 6px 0 10px; }
+summary { cursor: pointer; font-weight: bold; color: var(--accent2); padding: 4px 0; user-select: none; }
+.row { display: flex; align-items: center; gap: 8px; margin: 7px 0; }
+.row > span:first-child { width: 86px; flex: none; color: var(--dim); }
+.row output { width: 34px; text-align: right; font-variant-numeric: tabular-nums; }
+.row.chk > span:first-child { width: auto; }
+.row.chk { cursor: pointer; }
+.hint { color: var(--dim); font-size: 12px; margin: 2px 0 6px; }
+.disabled { opacity: .4; pointer-events: none; }
+[hidden] { display: none !important; }
+
+main { flex: 1; min-width: 0; display: flex; flex-direction: column; padding: 12px; gap: 12px; overflow: auto; }
+.views { flex: 1; display: flex; gap: 12px; min-height: 360px; }
+.view { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.view h2 { font-size: 13px; margin: 0; padding: 7px 10px; color: var(--dim); border-bottom: 1px solid var(--line); display: flex; gap: 10px; align-items: center; }
+.view h2 .sp { flex: 1; }
+.stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: auto; padding: 10px; position: relative; }
+.stage canvas { image-rendering: pixelated; display: block; }
+#srcCv { max-width: 100%; max-height: 100%; }
+#srcCv.picking { cursor: crosshair; outline: 2px dashed var(--accent); }
+.empty { color: var(--dim); text-align: center; line-height: 2; }
+
+.checker { background-color: #c8c8c8; background-image:
+  linear-gradient(45deg, #9e9e9e 25%, transparent 25%), linear-gradient(-45deg, #9e9e9e 25%, transparent 25%),
+  linear-gradient(45deg, transparent 75%, #9e9e9e 75%), linear-gradient(-45deg, transparent 75%, #9e9e9e 75%);
+  background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0; }
+.bg-grass { background: #6f9a45; }
+.bg-black { background: #111; }
+.bg-white { background: #fff; }
+.bg-camp { background: #b98f5c; }
+
+.bottom { display: flex; gap: 12px; flex-wrap: wrap; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.card h3 { margin: 0 0 8px; font-size: 13px; color: var(--dim); font-weight: normal; }
+.actual { display: flex; gap: 18px; align-items: flex-end; padding: 10px; border-radius: 6px; min-height: 60px; overflow: auto; max-height: 240px; }
+.bottom > .card:first-child { max-width: 42%; min-width: 0; }
+.actual figure { margin: 0; text-align: center; }
+.actual figcaption { font-size: 11px; color: #333; background: rgba(255,255,255,.7); border-radius: 3px; padding: 0 4px; margin-top: 4px; }
+.swatches { display: flex; flex-wrap: wrap; gap: 3px; max-width: 520px; }
+.sw { width: 22px; height: 22px; border-radius: 3px; border: 1px solid rgba(0,0,0,.4); position: relative; }
+.sw.sm { width: 14px; height: 14px; }
+#info { color: var(--dim); font-size: 12px; }
+#drop {
+  position: fixed; inset: 0; background: rgba(224,160,64,.18); border: 4px dashed var(--accent);
+  display: none; align-items: center; justify-content: center; font-size: 26px; color: var(--accent2); z-index: 9; pointer-events: none;
+}
+body.dragging #drop { display: flex; }
+.framelist { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; max-height: 260px; overflow-y: auto; }
+.fr { width: 72px; background: var(--panel2); border: 1px solid var(--line); border-radius: 6px; padding: 4px; text-align: center; }
+.fr canvas { width: 62px; height: 62px; object-fit: contain; image-rendering: pixelated; display: block; margin: 0 auto; }
+.fr-n { font-size: 11px; color: var(--dim); }
+.fr-b { display: flex; gap: 2px; justify-content: center; }
+.fr-b button { padding: 0 4px; font-size: 11px; }
+#animBox { justify-content: center; align-items: center; min-height: 170px; min-width: 170px; }
+#animCv { image-rendering: pixelated; }
+</style>
+</head>
+<body>
+<header>
+  <h1>像素圖轉換器</h1>
+  <button class="primary" id="btnOpen">選擇圖片</button>
+  <button id="btnDemo">範例圖</button>
+  <input type="file" id="fileIn" accept="image/*" hidden>
+  <span class="hint" style="margin:0">也可以拖曳圖片進來，或按 Ctrl+V 貼上</span>
+  <span class="sp"></span>
+  <span style="color:var(--dim)">預設組合</span>
+  <select id="presetSel"></select>
+  <button id="btnPresetSave">儲存目前設定</button>
+  <button id="btnPresetDel">刪除</button>
+</header>
+
+<div class="wrap">
+<aside>
+  <details open>
+    <summary>精靈圖</summary>
+    <label class="row"><span>模式</span>
+      <select data-k="spriteMode">
+        <option value="single">單張圖片</option>
+        <option value="slice">切割精靈圖（一張圖裡有很多格）</option>
+        <option value="merge">合併多張圖片成精靈圖</option>
+      </select></label>
+    <div data-show="spriteMode=slice">
+      <div class="row"><span>欄 × 列</span>
+        <input type="number" data-k="sliceCols" min="1" max="64"> ×
+        <input type="number" data-k="sliceRows" min="1" max="64"></div>
+      <div class="row"><span>或每格</span><input type="number" id="cellSize" value="16" min="1" max="1024"> px
+        <button id="btnCell">依格子大小切</button></div>
+      <div class="hint" id="cellInfo"></div>
+    </div>
+    <div data-show="spriteMode=merge">
+      <div class="row"><button class="primary" id="btnAddFrames">加入圖片</button><button id="btnClearFrames">全部清除</button></div>
+      <input type="file" id="framesIn" accept="image/*" multiple hidden>
+      <div id="frameList" class="framelist"></div>
+      <label class="row"><span>每列幾格</span><input type="number" data-k="mergeCols" min="1" max="64"></label>
+      <div class="hint">可以一次選很多張，會依檔名排序（walk_1、walk_2…）。用縮圖下的 ◀ ▶ 調整順序。</div>
+    </div>
+    <div data-show="spriteMode=slice|merge">
+      <label class="row chk"><input type="checkbox" data-k="sharedPal"><span>所有幀共用同一組顏色</span></label>
+      <div class="hint">所有幀用同一個縮放比例和位置，動畫不會忽大忽小或晃動；共用顏色則讓動畫不會閃色。</div>
+    </div>
+  </details>
+
+  <details open>
+    <summary>尺寸</summary>
+    <label class="row"><span>方式</span>
+      <select data-k="sizeMode">
+        <option value="fixed">固定尺寸</option>
+        <option value="scale">依倍率縮小</option>
+      </select></label>
+    <div data-show="sizeMode=fixed">
+      <label class="row"><span>目標大小</span><select data-k="sizePreset" id="sizePreset"></select></label>
+      <div class="row"><span>寬 × 高</span>
+        <input type="number" data-k="w" id="inW" min="1" max="512"> ×
+        <input type="number" data-k="h" id="inH" min="1" max="512"> px</div>
+      <label class="row"><span>放入方式</span>
+        <select data-k="fit">
+          <option value="contain">保持比例，完整放入</option>
+          <option value="cover">保持比例，填滿裁切</option>
+          <option value="stretch">拉伸填滿</option>
+        </select></label>
+      <label class="row"><span>對齊</span>
+        <select data-k="anchor">
+          <option value="bottom">底部置中（角色腳底對齊）</option>
+          <option value="center">正中央</option>
+        </select></label>
+      <label class="row"><span>內距</span><input type="number" data-k="pad" min="0" max="32"> px</label>
+    </div>
+    <div data-show="sizeMode=scale">
+      <label class="row"><span>縮小倍率</span><input type="range" data-k="scale" min="2" max="32" step="1"><output></output></label>
+      <div class="hint">每 N×N 個原圖像素變成 1 個像素。</div>
+    </div>
+    <label class="row chk"><input type="checkbox" data-k="trim"><span>自動裁掉透明邊</span></label>
+    <label class="row"><span>取色方式</span>
+      <select data-k="resample">
+        <option value="mode">取最多的顏色（推薦）</option>
+        <option value="average">平均顏色（較平滑）</option>
+        <option value="nearest">最近鄰（銳利、可能有雜點）</option>
+      </select></label>
+  </details>
+
+  <details open>
+    <summary>前處理</summary>
+    <label class="row"><span>亮度</span><input type="range" data-k="bright" min="-100" max="100"><output></output></label>
+    <label class="row"><span>對比</span><input type="range" data-k="contrast" min="-100" max="100"><output></output></label>
+    <label class="row"><span>飽和度</span><input type="range" data-k="sat" min="-100" max="100"><output></output></label>
+    <button id="btnResetAdj">重設</button>
+  </details>
+
+  <details open>
+    <summary>去背與透明</summary>
+    <label class="row chk"><input type="checkbox" data-k="bgOn"><span>移除背景色</span></label>
+    <div id="bgBox">
+      <div class="row"><span>背景色</span><input type="color" data-k="bgColor"><button id="btnPick">從原圖點選</button></div>
+      <label class="row"><span>容差</span><input type="range" data-k="bgTol" min="0" max="100"><output></output></label>
+      <label class="row chk"><input type="checkbox" data-k="bgFlood"><span>只移除跟邊緣相連的背景</span></label>
+      <div class="hint">勾選時，人物身上剛好同色的地方（例如白色衣服）不會被挖空。</div>
+    </div>
+    <label class="row"><span>透明門檻</span><input type="range" data-k="alphaThr" min="1" max="255"><output></output></label>
+    <div class="hint">像素圖不用半透明：比門檻透明的變全透明，其餘變不透明。</div>
+  </details>
+
+  <details open>
+    <summary>顏色</summary>
+    <label class="row"><span>調色盤</span><select data-k="palette" id="palSel"></select></label>
+    <div id="palPreview" class="swatches" style="margin:4px 0 6px"></div>
+    <label class="row" id="colorsRow"><span id="colorsLabel">顏色數</span><input type="range" data-k="colors" min="2" max="64"><output></output></label>
+    <label class="row chk" data-show="palette=game|pico8|sweetie16|endesga32|nes|gameboy|custom"><input type="checkbox" data-k="limitFixed"><span>只用調色盤裡最常用的 N 色</span></label>
+    <div data-show="palette=custom">
+      <textarea data-k="customPal" placeholder="每行一個顏色，例如：&#10;#141b1b&#10;#e0394c"></textarea>
+      <div class="row">
+        <button id="btnPalFile">匯入色票檔</button>
+        <button id="btnPalImg">從圖片抽色</button>
+        <input type="file" id="palFileIn" accept=".gpl,.hex,.txt,.pal" hidden>
+        <input type="file" id="palImgIn" accept="image/*" hidden>
+      </div>
+      <div class="hint">色票檔支援 .hex / .gpl（Lospec 下載的格式）。從圖片抽色會取「顏色數」那麼多色。</div>
+    </div>
+    <label class="row"><span>抖色</span>
+      <select data-k="dither">
+        <option value="none">關閉</option>
+        <option value="bayer">網點（Bayer）</option>
+        <option value="fs">擴散（Floyd-Steinberg）</option>
+      </select></label>
+    <label class="row" id="ditherRow"><span>抖色強度</span><input type="range" data-k="ditherStr" min="0" max="100"><output></output></label>
+    <div class="hint">照片或漸層多的圖可以開抖色；角色貼圖通常關閉比較乾淨。</div>
+  </details>
+
+  <details open>
+    <summary>遊戲風格修飾</summary>
+    <label class="row"><span>外框</span>
+      <select data-k="outline">
+        <option value="none">無</option>
+        <option value="outer">外側加 1px 外框</option>
+        <option value="inner">內側描邊（不加大）</option>
+      </select></label>
+    <div id="outlineBox">
+      <div class="row"><span>外框顏色</span><input type="color" data-k="outlineColor"><button id="btnOlDefault">遊戲預設色</button></div>
+      <label class="row"><span>外框形狀</span>
+        <select data-k="outlineN">
+          <option value="4">上下左右（較圓潤）</option>
+          <option value="8">含斜角（較粗）</option>
+        </select></label>
+    </div>
+    <label class="row chk"><input type="checkbox" data-k="cleanFloat"><span>移除孤立的單顆像素</span></label>
+    <label class="row chk"><input type="checkbox" data-k="cleanSpeck"><span>清除色塊中的雜色點</span></label>
+  </details>
+
+  <details open>
+    <summary>輸出</summary>
+    <label class="row"><span>檔名</span><input type="text" data-k="fname" style="flex:1"><span>.png</span></label>
+    <div class="row"><button class="primary" id="btnDl1">下載 PNG（原尺寸）</button></div>
+    <div class="row">
+      <button id="btnDlBig">下載放大版</button>
+      <select data-k="exportScale">
+        <option value="2">2 倍</option><option value="4">4 倍</option><option value="8">8 倍</option><option value="16">16 倍</option>
+      </select>
+    </div>
+    <div class="hint">遊戲裡用原尺寸；放大版方便給別人看。設定會自動記住。</div>
+  </details>
+</aside>
+
+<main>
+  <div class="views">
+    <section class="view">
+      <h2>原圖 <span class="sp"></span>
+        <label class="row chk" style="margin:0"><input type="checkbox" data-k="showRaw"><span>顯示未處理原圖</span></label></h2>
+      <div class="stage checker" id="srcStage">
+        <canvas id="srcCv" hidden></canvas>
+        <div class="empty" id="emptyMsg">把圖片拖曳到這裡<br>或按上方「選擇圖片」<br>也可以按「範例圖」試試看</div>
+      </div>
+    </section>
+    <section class="view">
+      <h2>結果 <span class="sp"></span>
+        縮放 <select data-k="zoom">
+          <option value="auto">自動</option><option value="2">2×</option><option value="4">4×</option>
+          <option value="8">8×</option><option value="12">12×</option><option value="16">16×</option><option value="24">24×</option>
+        </select>
+        <label class="row chk" style="margin:0"><input type="checkbox" data-k="grid"><span>格線</span></label>
+        背景 <select data-k="previewBg">
+          <option value="checker">棋盤格</option><option value="grass">草地</option><option value="camp">泥土</option>
+          <option value="black">黑</option><option value="white">白</option>
+        </select>
+      </h2>
+      <div class="stage" id="outStage"><canvas id="outCv"></canvas></div>
+    </section>
+  </div>
+  <div class="bottom">
+    <div class="card">
+      <h3>實際大小</h3>
+      <div class="actual" id="actual">
+        <figure><canvas id="a1"></canvas><figcaption>1×</figcaption></figure>
+        <figure><canvas id="a2"></canvas><figcaption>2×</figcaption></figure>
+        <figure><canvas id="a3"></canvas><figcaption>3×</figcaption></figure>
+      </div>
+    </div>
+    <div class="card" id="animCard" hidden>
+      <h3>動畫預覽</h3>
+      <div class="row" style="margin:0 0 6px">
+        <select data-k="animPlay">
+          <option value="col">播放某一欄（直的）</option>
+          <option value="row">播放某一列（橫的）</option>
+          <option value="all">全部依序播放</option>
+        </select>
+        <span data-show="animPlay=col|row">第 <input type="number" data-k="animIdx" min="1" max="64" style="width:50px"></span>
+        <button id="btnPlay">暫停</button>
+      </div>
+      <label class="row"><span>速度</span><input type="range" data-k="fps" min="1" max="24"><output></output>格/秒</label>
+      <div class="actual" id="animBox"><canvas id="animCv"></canvas></div>
+    </div>
+    <div class="card" style="flex:1">
+      <h3>使用的顏色 <span id="info"></span></h3>
+      <div class="swatches" id="usedSw"></div>
+    </div>
+  </div>
+</main>
+</div>
+<div id="drop">放開以載入圖片</div>
+
+<script src="tool-nav.js"></script>
+<script src="pixel-core.js"></script>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+
+// ---------- 資料 ----------
+const SIZE_PRESETS = [
+  { id: '16x16', label: '16×16　Ninja Adventure 角色／圖塊', w: 16, h: 16 },
+  { id: '24x24', label: '24×24', w: 24, h: 24 },
+  { id: '32x32', label: '32×32', w: 32, h: 32 },
+  { id: '48x48', label: '48×48', w: 48, h: 48 },
+  { id: '64x64', label: '64×64', w: 64, h: 64 },
+  { id: '32x48', label: '32×48　八方旅人風角色', w: 32, h: 48 },
+  { id: '48x64', label: '48×64　八方旅人風大型角色／Boss', w: 48, h: 64 },
+  { id: '24x32', label: '24×32　小型 RPG 角色（Q 版）', w: 24, h: 32 },
+  { id: 'custom', label: '自訂' },
+];
+
+
+const DEFAULTS = {
+  sizeMode: 'fixed', sizePreset: '32x48', w: 32, h: 48, fit: 'contain', anchor: 'bottom', pad: 0, scale: 8,
+  trim: true, resample: 'mode',
+  bright: 0, contrast: 0, sat: 0,
+  bgOn: false, bgColor: '#ffffff', bgTol: 15, bgFlood: true, alphaThr: 128,
+  palette: 'auto', colors: 24, limitFixed: false, customPal: '', dither: 'none', ditherStr: 40,
+  outline: 'outer', outlineColor: GAME_OUTLINE, outlineN: '4', cleanFloat: true, cleanSpeck: false,
+  fname: 'sprite', exportScale: '4', showRaw: false, zoom: 'auto', grid: true, previewBg: 'checker',
+  spriteMode: 'single', sliceCols: 4, sliceRows: 4, mergeCols: 4, sharedPal: true, animPlay: 'col', animIdx: 1, fps: 6,
+};
+// 預設組合只改「轉換」相關的設定，不動檔名、縮放、精靈圖格式等設定
+const VIEW_KEYS = ['fname', 'exportScale', 'showRaw', 'zoom', 'grid', 'previewBg', 'bgColor', 'customPal',
+  'spriteMode', 'sliceCols', 'sliceRows', 'mergeCols', 'animPlay', 'animIdx', 'fps'];
+const BUILTIN_PRESETS = {
+  '八方旅人風角色': { sizeMode: 'fixed', sizePreset: '32x48', w: 32, h: 48, fit: 'contain', anchor: 'bottom', pad: 0, trim: true,
+    resample: 'mode', palette: 'auto', colors: 24, limitFixed: false, dither: 'none', outline: 'outer', outlineN: '4',
+    outlineColor: GAME_OUTLINE, cleanFloat: true, cleanSpeck: false },
+  'Ninja Adventure 角色（16×16）': { sizeMode: 'fixed', sizePreset: '16x16', w: 16, h: 16, fit: 'contain', anchor: 'bottom', pad: 0,
+    trim: true, resample: 'mode', palette: 'game', colors: 12, limitFixed: true, dither: 'none', outline: 'outer', outlineN: '4',
+    outlineColor: GAME_OUTLINE, cleanFloat: true, cleanSpeck: true },
+  '地圖圖塊（16×16）': { sizeMode: 'fixed', sizePreset: '16x16', w: 16, h: 16, fit: 'cover', anchor: 'center', pad: 0, trim: false,
+    resample: 'average', palette: 'game', colors: 16, limitFixed: false, dither: 'none', outline: 'none', cleanFloat: false,
+    cleanSpeck: false, bgOn: false },
+  '照片轉像素畫': { sizeMode: 'fixed', sizePreset: '64x64', w: 64, h: 64, fit: 'contain', anchor: 'center', pad: 0, trim: true,
+    resample: 'average', bright: 0, contrast: 15, sat: 25, palette: 'auto', colors: 16, limitFixed: false, dither: 'bayer',
+    ditherStr: 35, outline: 'none', cleanFloat: true, cleanSpeck: false },
+};
+
+// ---------- 小工具 ----------
+const store = {
+  get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* 無痕模式等情況存不了，略過 */ } },
+};
+
+// ---------- 設定讀寫 ----------
+const controls = [...document.querySelectorAll('[data-k]')];
+function readSettings() {
+  const s = {};
+  for (const el of controls) {
+    const k = el.dataset.k;
+    if (el.type === 'checkbox') s[k] = el.checked;
+    else if (el.type === 'range' || el.type === 'number') s[k] = Number(el.value) || 0;
+    else s[k] = el.value;
+  }
+  return s;
+}
+function writeSettings(s) {
+  for (const el of controls) {
+    const k = el.dataset.k;
+    if (!(k in s)) continue;
+    if (el.type === 'checkbox') el.checked = !!s[k];
+    else el.value = s[k];
+    if (el.type === 'range') el.nextElementSibling.textContent = el.value;
+  }
+}
+
+// ---------- 主要處理流程 ----------
+let raw = null;                     // 單張／切割模式的原圖（ImageData）
+let mergeList = [];                 // 合併模式的圖片：[{ name, data }]
+let srcId = 0;                      // 原圖有變動就 +1，讓快取失效
+let src = null, srcKey = '';        // 切好的各幀：{ frames, cols, rows, fw, fh }
+let stage = null, stageKey = '';    // 前處理 + 去背後的各幀
+let result = null;                  // 最後結果（整張精靈圖）
+let resultFrames = [], layout = null, lastS = null;
+const outBuf = document.createElement('canvas'), srcBuf = document.createElement('canvas');
+const MAX_SRC = 2048;
+
+
+function getSource(s) {
+  const key = JSON.stringify([srcId, s.spriteMode, s.sliceCols, s.sliceRows, s.mergeCols]);
+  if (key === srcKey) return src;
+  srcKey = key; stageKey = '';
+  if (s.spriteMode === 'merge') {
+    if (!mergeList.length) return (src = null);
+    const fw = Math.max(...mergeList.map(f => f.data.width)), fh = Math.max(...mergeList.map(f => f.data.height));
+    const cols = clamp(s.mergeCols | 0, 1, 64);
+    return (src = { frames: mergeList.map(f => padTo(f.data, fw, fh)), cols, rows: Math.ceil(mergeList.length / cols), fw, fh });
+  }
+  if (!raw) return (src = null);
+  if (s.spriteMode === 'slice') {
+    const cols = clamp(s.sliceCols | 0, 1, 64), rows = clamp(s.sliceRows | 0, 1, 64);
+    const fw = Math.max(1, Math.floor(raw.width / cols)), fh = Math.max(1, Math.floor(raw.height / rows)), frames = [];
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++)
+      frames.push(crop(raw, Math.round(c * raw.width / cols), Math.round(r * raw.height / rows), fw, fh));
+    return (src = { frames, cols, rows, fw, fh });
+  }
+  return (src = { frames: [raw], cols: 1, rows: 1, fw: raw.width, fh: raw.height });
+}
+
+
+function run() {
+  const s = readSettings();
+  store.set('pxconv.settings', s);
+  lastS = s;
+  updateUI(s);
+  const sc = getSource(s);
+  if (!sc) { clearViews(); return; }
+  const t0 = performance.now();
+  const keyA = srcKey + JSON.stringify([s.bright, s.contrast, s.sat, s.bgOn, s.bgColor, s.bgTol, s.bgFlood]);
+  if (keyA !== stageKey) {
+    stage = sc.frames.map(f => { const a = adjust(f, s); if (s.bgOn) removeBg(a, s); return a; });
+    stageKey = keyA;
+  }
+  // 所有幀共用同一個範圍，縮放比例和位置才會一致
+  let box = null;
+  if (s.trim) for (const f of stage) { const b = bbox(f, s.alphaThr); if (b) box = box ? unionBox(box, b) : b; }
+  if (!box) box = { x: 0, y: 0, w: sc.fw, h: sc.fh };
+  const g = geometry(box, s);
+  const outs = stage.map(f => { const o = resample(f, g, s.resample); thresholdAlpha(o, s.alphaThr); return o; });
+  if (s.sharedPal || outs.length === 1) {
+    const pal = choosePalette(countColors(outs), s);
+    if (pal) outs.forEach(o => applyPalette(o, pal, s));
+  } else {
+    outs.forEach(o => { const pal = choosePalette(countColors([o]), s); if (pal) applyPalette(o, pal, s); });
+  }
+  for (const o of outs) {
+    if (s.cleanFloat || s.cleanSpeck) cleanup(o, s);
+    if (s.outline !== 'none') outline(o, s);
+  }
+  resultFrames = outs;
+  layout = { cols: sc.cols, rows: sc.rows, W: g.W, H: g.H, empty: outs.map(o => !o.data.some((v, i) => (i & 3) === 3 && v)) };
+  result = compose(outs, sc.cols, sc.rows, g.W, g.H);
+  if (s.spriteMode === 'slice') $('cellInfo').textContent = `原圖每格 ${sc.fw}×${sc.fh} px，共 ${sc.frames.length} 格`;
+  render(s, sc, performance.now() - t0);
+}
+
+function clearViews() {
+  result = null; resultFrames = []; layout = null;
+  $('srcCv').hidden = true; $('emptyMsg').hidden = false;
+  $('emptyMsg').innerHTML = lastS && lastS.spriteMode === 'merge'
+    ? '合併模式：按左邊「加入圖片」<br>或把多張圖片一起拖曳進來'
+    : '把圖片拖曳到這裡<br>或按上方「選擇圖片」<br>也可以按「範例圖」試試看';
+  const cv = $('outCv'); cv.width = cv.height = 0;
+  for (const k of [1, 2, 3]) { const c = $('a' + k); c.width = c.height = 0; }
+  $('usedSw').innerHTML = ''; $('info').textContent = ''; $('cellInfo').textContent = '';
+  $('animCard').hidden = true;
+}
+
+let pending = false;
+function schedule() { if (pending) return; pending = true; requestAnimationFrame(() => { pending = false; run(); }); }
+
+// ---------- 畫面 ----------
+function render(s, sc, ms) {
+  const srcCv = $('srcCv'), multi = resultFrames.length > 1;
+  const show = compose(s.showRaw ? sc.frames : stage, sc.cols, sc.rows, sc.fw, sc.fh);
+  // 放大或縮小到剛好塞進面板；小圖用整數倍放大，像素才會整齊
+  const sb = $('srcStage');
+  let fz = Math.min((sb.clientWidth - 20) / show.width, (sb.clientHeight - 20) / show.height);
+  if (fz >= 1) fz = Math.min(Math.floor(fz), 32); else fz = Math.max(fz, 0.05);
+  srcBuf.width = show.width; srcBuf.height = show.height; srcBuf.getContext('2d').putImageData(show, 0, 0);
+  srcCv.width = Math.max(1, Math.round(show.width * fz)); srcCv.height = Math.max(1, Math.round(show.height * fz));
+  const sctx = srcCv.getContext('2d');
+  sctx.imageSmoothingEnabled = fz < 1;
+  sctx.drawImage(srcBuf, 0, 0, srcCv.width, srcCv.height);
+  if (multi) drawCells(sctx, sc.cols, sc.rows, sc.fw * fz, sc.fh * fz, 2);
+  srcCv.hidden = false; $('emptyMsg').hidden = true;
+
+  const W = result.width, H = result.height;
+  outBuf.width = W; outBuf.height = H; outBuf.getContext('2d').putImageData(result, 0, 0);
+
+  const box = $('outStage');
+  let z = s.zoom === 'auto'
+    ? clamp(Math.floor(Math.min((box.clientWidth - 24) / W, (box.clientHeight - 24) / H)), 1, 32)
+    : Number(s.zoom);
+  const cv = $('outCv'), ctx = cv.getContext('2d');
+  cv.width = W * z; cv.height = H * z;
+  cv.className = 'bg-' + s.previewBg;
+  if (s.previewBg === 'checker') cv.className = 'checker';
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(outBuf, 0, 0, W * z, H * z);
+  if (s.grid && z >= 4) {
+    ctx.strokeStyle = 'rgba(60,60,60,.35)'; ctx.lineWidth = 1; ctx.beginPath();
+    for (let x = 0; x <= W; x++) { ctx.moveTo(x * z + 0.5, 0); ctx.lineTo(x * z + 0.5, H * z); }
+    for (let y = 0; y <= H; y++) { ctx.moveTo(0, y * z + 0.5); ctx.lineTo(W * z, y * z + 0.5); }
+    ctx.stroke();
+  }
+  if (multi) drawCells(ctx, layout.cols, layout.rows, layout.W * z, layout.H * z, 2);
+
+  [1, 2, 3].forEach(k => {
+    const c = $('a' + k), cx = c.getContext('2d');
+    c.width = W * k; c.height = H * k; cx.imageSmoothingEnabled = false; cx.drawImage(outBuf, 0, 0, W * k, H * k);
+  });
+  $('actual').className = 'actual ' + (s.previewBg === 'checker' ? 'checker' : 'bg-' + s.previewBg);
+
+  // 使用的顏色
+  const d = result.data, counts = new Map();
+  for (let i = 0; i < d.length; i += 4) if (d[i + 3]) {
+    const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2]; counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const used = [...counts].sort((a, b) => b[1] - a[1]);
+  $('usedSw').innerHTML = used.map(([c, n]) => {
+    const hex = rgb2hex((c >> 16) & 255, (c >> 8) & 255, c & 255);
+    return `<div class="sw" style="background:${hex}" title="${hex}（${n} 格）"></div>`;
+  }).join('');
+  $('info').textContent = multi
+    ? `　${resultFrames.length} 格（${layout.cols} 欄 × ${layout.rows} 列），每格 ${layout.W}×${layout.H}，整張 ${W}×${H}，共 ${used.length} 色，${Math.round(ms)} ms`
+    : `　原圖 ${sc.fw}×${sc.fh} → ${W}×${H}，共 ${used.length} 色，${Math.round(ms)} ms`;
+
+  $('animCard').hidden = !multi;
+  if (multi) startAnim(s.fps); else stopAnim();
+}
+
+// 格子分隔線
+function drawCells(ctx, cols, rows, cw, ch, lw) {
+  ctx.save(); ctx.strokeStyle = 'rgba(224,160,64,.9)'; ctx.lineWidth = lw; ctx.beginPath();
+  for (let c = 1; c < cols; c++) { ctx.moveTo(c * cw, 0); ctx.lineTo(c * cw, rows * ch); }
+  for (let r = 1; r < rows; r++) { ctx.moveTo(0, r * ch); ctx.lineTo(cols * cw, r * ch); }
+  ctx.stroke(); ctx.restore();
+}
+
+// ---------- 動畫預覽 ----------
+let animTimer = null, animFps = 0, animPos = 0, animPaused = false;
+const animBuf = document.createElement('canvas');
+function animSeq(s) {
+  if (!layout) return [];
+  const { cols, rows } = layout, n = resultFrames.length, seq = [];
+  if (s.animPlay === 'col') { const c = clamp(s.animIdx | 0, 1, cols) - 1; for (let r = 0; r < rows; r++) seq.push(r * cols + c); }
+  else if (s.animPlay === 'row') { const r = clamp(s.animIdx | 0, 1, rows) - 1; for (let c = 0; c < cols; c++) seq.push(r * cols + c); }
+  else for (let i = 0; i < n; i++) seq.push(i);
+  return seq.filter(i => i < n && !layout.empty[i]); // 空白格跳過
+}
+function animTick() {
+  const s = lastS, cv = $('animCv'), seq = s ? animSeq(s) : [];
+  if (!seq.length) { cv.width = cv.height = 0; return; }
+  animPos %= seq.length;
+  const f = resultFrames[seq[animPos]], z = clamp(Math.floor(160 / Math.max(f.width, f.height)), 1, 16);
+  animBuf.width = f.width; animBuf.height = f.height; animBuf.getContext('2d').putImageData(f, 0, 0);
+  cv.width = f.width * z; cv.height = f.height * z;
+  const ctx = cv.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.drawImage(animBuf, 0, 0, cv.width, cv.height);
+  $('animBox').className = 'actual ' + (s.previewBg === 'checker' ? 'checker' : 'bg-' + s.previewBg);
+  if (!animPaused) animPos++;
+}
+function startAnim(fps) {
+  fps = clamp(fps || 6, 1, 60);
+  if (animTimer && fps === animFps) { if (animPaused) animTick(); return; }
+  stopAnim(); animFps = fps; animTimer = setInterval(animTick, 1000 / fps); animTick();
+}
+function stopAnim() { clearInterval(animTimer); animTimer = null; animFps = 0; }
+$('btnPlay').onclick = () => { animPaused = !animPaused; $('btnPlay').textContent = animPaused ? '播放' : '暫停'; if (!animPaused) animTick(); };
+
+function updateUI(s) {
+  for (const el of document.querySelectorAll('[data-show]')) {
+    const [k, vals] = el.dataset.show.split('=');
+    el.hidden = !vals.split('|').includes(String(s[k]));
+  }
+  $('bgBox').classList.toggle('disabled', !s.bgOn);
+  $('outlineBox').classList.toggle('disabled', s.outline === 'none');
+  $('ditherRow').classList.toggle('disabled', s.dither === 'none');
+  const fixed = s.palette !== 'auto' && s.palette !== 'none';
+  $('colorsRow').classList.toggle('disabled', s.palette === 'none' || (fixed && !s.limitFixed));
+  $('colorsLabel').textContent = fixed ? '最多色數' : '顏色數';
+  const pal = PALETTES[s.palette] && PALETTES[s.palette].colors;
+  $('palPreview').innerHTML = pal ? pal.map(h => `<div class="sw sm" style="background:${h}" title="${h}"></div>`).join('') : '';
+}
+
+// ---------- 載入圖片 ----------
+const loadData = blob => new Promise(res => loadBlob(blob, img => res(imageToData(img, MAX_SRC)), () => res(null)));
+
+// 小張的精靈圖（例如 64×112）猜它是 16px 一格
+function guessGrid(data) {
+  const { width: w, height: h } = data;
+  if (w <= 256 && h <= 256 && w % 16 === 0 && h % 16 === 0 && w * h > 256) return { sliceCols: w / 16, sliceRows: h / 16 };
+  return {};
+}
+const baseName = n => (n || 'sprite').replace(/\.[^.]+$/, '');
+
+function setSource(data, name) {
+  if (readSettings().spriteMode === 'merge') { addFrameData([{ name: name || 'image', data }]); return; }
+  raw = data; srcId++;
+  const patch = autoBg(data);
+  if (readSettings().spriteMode === 'slice') Object.assign(patch, guessGrid(data));
+  if (name) patch.fname = baseName(name);
+  writeSettings(patch);
+  schedule();
+}
+
+// ---------- 合併模式 ----------
+function addFrameData(items) {
+  if (!items.length) return;
+  const patch = {};
+  if (!mergeList.length) {
+    Object.assign(patch, autoBg(items[0].data));
+    patch.fname = baseName(items[0].name).replace(/[_\-\s]*\d+$/, '') || 'sprite';
+  }
+  mergeList.push(...items);
+  srcId++;
+  writeSettings(patch);
+  renderFrameList(); schedule();
+}
+async function openFiles(files) {
+  files = [...files].filter(f => f.type.startsWith('image/'));
+  if (!files.length) return;
+  if (readSettings().spriteMode !== 'merge') { loadBlob(files[0], img => setSource(imageToData(img, MAX_SRC), files[0].name)); return; }
+  files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  const items = [];
+  for (const f of files) { const data = await loadData(f); if (data) items.push({ name: f.name, data }); }
+  if (items.length < files.length) alert(`有 ${files.length - items.length} 個檔案無法讀取，已略過。`);
+  addFrameData(items);
+}
+function openFile(file) { if (file) openFiles([file]); }
+
+function renderFrameList() {
+  const box = $('frameList');
+  box.innerHTML = mergeList.map((f, i) => `<div class="fr" title="${f.name.replace(/"/g, '&quot;')}">
+    <canvas class="checker"></canvas><div class="fr-n">${i + 1}</div>
+    <div class="fr-b"><button data-a="l" data-i="${i}" title="往前">◀</button><button data-a="r" data-i="${i}" title="往後">▶</button><button data-a="x" data-i="${i}" title="移除">✕</button></div></div>`).join('');
+  box.querySelectorAll('canvas').forEach((c, i) => {
+    const d = mergeList[i].data; c.width = d.width; c.height = d.height; c.getContext('2d').putImageData(d, 0, 0);
+  });
+}
+$('frameList').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const i = +b.dataset.i, L = mergeList;
+  if (b.dataset.a === 'l' && i > 0) [L[i - 1], L[i]] = [L[i], L[i - 1]];
+  else if (b.dataset.a === 'r' && i < L.length - 1) [L[i + 1], L[i]] = [L[i], L[i + 1]];
+  else if (b.dataset.a === 'x') L.splice(i, 1);
+  else return;
+  srcId++; renderFrameList(); schedule();
+};
+$('btnAddFrames').onclick = () => $('framesIn').click();
+$('framesIn').onchange = e => { const fs = [...e.target.files]; e.target.value = ''; openFiles(fs); };
+$('btnClearFrames').onclick = () => {
+  if (mergeList.length && !confirm('清除所有已加入的圖片？')) return;
+  mergeList = []; srcId++; renderFrameList(); schedule();
+};
+$('btnCell').onclick = () => {
+  const cs = Math.max(1, +$('cellSize').value || 16);
+  if (!raw) return;
+  writeSettings({ sliceCols: clamp(Math.round(raw.width / cs), 1, 64), sliceRows: clamp(Math.round(raw.height / cs), 1, 64) });
+  schedule();
+};
+
+function demoImage() {
+  const c = document.createElement('canvas'); c.width = 360; c.height = 520;
+  const x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.fillRect(0, 0, 360, 520);
+  const grad = (x0, y0, r, a, b) => { const g = x.createRadialGradient(x0 - r * .3, y0 - r * .3, r * .1, x0, y0, r); g.addColorStop(0, a); g.addColorStop(1, b); return g; };
+  // 身體（披風）
+  x.fillStyle = grad(180, 330, 150, '#5a7fd0', '#1e2b5c');
+  x.beginPath(); x.moveTo(90, 470); x.quadraticCurveTo(100, 260, 180, 240); x.quadraticCurveTo(260, 260, 270, 470); x.closePath(); x.fill();
+  // 腰帶
+  x.fillStyle = '#c8962e'; x.fillRect(118, 360, 124, 18);
+  // 腳
+  x.fillStyle = '#3b2a20'; x.fillRect(130, 465, 40, 30); x.fillRect(190, 465, 40, 30);
+  // 頭
+  x.fillStyle = grad(180, 170, 85, '#ffe0c4', '#d9926a'); x.beginPath(); x.arc(180, 170, 80, 0, Math.PI * 2); x.fill();
+  // 頭髮
+  x.fillStyle = grad(170, 110, 110, '#e04848', '#701c2a');
+  x.beginPath(); x.ellipse(180, 120, 92, 55, 0, Math.PI, 0); x.lineTo(272, 160); x.lineTo(240, 130); x.lineTo(200, 150); x.lineTo(160, 125); x.lineTo(120, 150); x.lineTo(88, 160); x.closePath(); x.fill();
+  // 眼睛
+  x.fillStyle = '#1b1b2a'; x.fillRect(140, 175, 14, 26); x.fillRect(206, 175, 14, 26);
+  x.fillStyle = '#ffffff'; x.fillRect(143, 178, 5, 7); x.fillRect(209, 178, 5, 7);
+  // 劍
+  x.save(); x.translate(285, 340); x.rotate(-0.35);
+  x.fillStyle = '#8fa6bb'; x.fillRect(-6, -170, 12, 170); x.fillStyle = '#7d5a2c'; x.fillRect(-20, 0, 40, 10); x.fillRect(-5, 10, 10, 40);
+  x.restore();
+  setSource(x.getImageData(0, 0, 360, 520), 'demo');
+}
+
+// ---------- 預設組合 ----------
+function userPresets() { return store.get('pxconv.presets') || {}; }
+function fillPresetSelect(selected) {
+  const up = userPresets();
+  $('presetSel').innerHTML = '<option value="">（選擇預設組合）</option>' +
+    '<optgroup label="內建">' + Object.keys(BUILTIN_PRESETS).map(n => `<option value="b:${n}">${n}</option>`).join('') + '</optgroup>' +
+    (Object.keys(up).length ? '<optgroup label="我的設定">' + Object.keys(up).map(n => `<option value="u:${n}">${n}</option>`).join('') + '</optgroup>' : '');
+  $('presetSel').value = selected || '';
+}
+$('presetSel').onchange = () => {
+  const v = $('presetSel').value; if (!v) return;
+  const p = v.startsWith('b:') ? BUILTIN_PRESETS[v.slice(2)] : userPresets()[v.slice(2)];
+  if (p) { writeSettings(p); schedule(); }
+};
+$('btnPresetSave').onclick = () => {
+  const name = prompt('幫這組設定取個名字：'); if (!name) return;
+  const s = readSettings(); for (const k of VIEW_KEYS) delete s[k];
+  const up = userPresets(); up[name] = s; store.set('pxconv.presets', up); fillPresetSelect('u:' + name);
+};
+$('btnPresetDel').onclick = () => {
+  const v = $('presetSel').value;
+  if (!v.startsWith('u:')) { alert('只能刪除「我的設定」裡的組合。'); return; }
+  if (!confirm(`刪除「${v.slice(2)}」？`)) return;
+  const up = userPresets(); delete up[v.slice(2)]; store.set('pxconv.presets', up); fillPresetSelect();
+};
+
+// ---------- 事件 ----------
+$('sizePreset').innerHTML = SIZE_PRESETS.map(p => `<option value="${p.id}">${p.label}</option>`).join('');
+$('palSel').innerHTML = Object.entries(PALETTES).map(([k, p]) => `<option value="${k}">${p.label}</option>`).join('');
+
+for (const el of controls) {
+  el.addEventListener('input', () => {
+    if (el.type === 'range') el.nextElementSibling.textContent = el.value;
+    if (el.id === 'sizePreset') {
+      const p = SIZE_PRESETS.find(x => x.id === el.value);
+      if (p && p.w) { $('inW').value = p.w; $('inH').value = p.h; }
+    } else if (el.id === 'inW' || el.id === 'inH') {
+      const p = SIZE_PRESETS.find(x => x.w === +$('inW').value && x.h === +$('inH').value);
+      $('sizePreset').value = p ? p.id : 'custom';
+    } else if (el.dataset.k === 'spriteMode') {
+      // 切到合併模式時，把目前的圖片當第一張；切到切割模式時猜格子
+      if (el.value === 'merge' && !mergeList.length && raw) { mergeList.push({ name: lastS ? lastS.fname : 'image', data: raw }); renderFrameList(); }
+      if (el.value === 'slice' && raw) writeSettings(guessGrid(raw));
+      srcId++;
+    }
+    schedule();
+  });
+}
+
+$('btnOpen').onclick = () => $(readSettings().spriteMode === 'merge' ? 'framesIn' : 'fileIn').click();
+$('fileIn').onchange = e => { openFile(e.target.files[0]); e.target.value = ''; };
+$('btnDemo').onclick = demoImage;
+$('btnResetAdj').onclick = () => { writeSettings({ bright: 0, contrast: 0, sat: 0 }); schedule(); };
+$('btnOlDefault').onclick = () => { writeSettings({ outlineColor: GAME_OUTLINE }); schedule(); };
+
+let picking = false;
+$('btnPick').onclick = () => {
+  if (!src) return;
+  picking = !picking; $('btnPick').classList.toggle('on', picking); $('srcCv').classList.toggle('picking', picking);
+};
+$('srcCv').addEventListener('click', e => {
+  if (!picking || !src) return;
+  const img = compose(src.frames, src.cols, src.rows, src.fw, src.fh);
+  const cv = $('srcCv'), r = cv.getBoundingClientRect();
+  const x = clamp(Math.floor((e.clientX - r.left) / r.width * img.width), 0, img.width - 1);
+  const y = clamp(Math.floor((e.clientY - r.top) / r.height * img.height), 0, img.height - 1);
+  const i = (y * img.width + x) * 4;
+  writeSettings({ bgColor: rgb2hex(img.data[i], img.data[i + 1], img.data[i + 2]), bgOn: true });
+  picking = false; $('btnPick').classList.remove('on'); cv.classList.remove('picking');
+  schedule();
+});
+
+// 拖曳與貼上
+let dragDepth = 0;
+addEventListener('dragenter', e => { e.preventDefault(); dragDepth++; document.body.classList.add('dragging'); });
+addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dragging'); } });
+addEventListener('dragover', e => e.preventDefault());
+addEventListener('drop', e => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove('dragging');
+  openFiles(e.dataTransfer.files);
+});
+addEventListener('paste', e => {
+  const item = [...((e.clipboardData || {}).items || [])].find(i => i.type.startsWith('image/'));
+  if (item) openFile(item.getAsFile());
+});
+addEventListener('resize', schedule);
+
+// 色票
+$('btnPalFile').onclick = () => $('palFileIn').click();
+$('palFileIn').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const cols = parseColors(await f.text());
+  if (!cols.length) { alert('這個檔案裡找不到顏色。'); return; }
+  writeSettings({ customPal: cols.map(c => rgb2hex(...c)).join('\n'), palette: 'custom' }); schedule();
+};
+$('btnPalImg').onclick = () => $('palImgIn').click();
+$('palImgIn').onchange = e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  loadBlob(f, img => {
+    const data = imageToData(img, 256), d = data.data, counts = new Map();
+    for (let i = 0; i < d.length; i += 4) if (d[i + 3] > 128) {
+      const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2]; counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    if (!counts.size) return;
+    const pal = kmeans(counts, readSettings().colors);
+    writeSettings({ customPal: pal.map(c => rgb2hex(...c)).join('\n'), palette: 'custom' }); schedule();
+  });
+};
+
+// 下載
+function download(scale) {
+  if (!result) { alert('請先載入圖片。'); return; }
+  const s = readSettings(), W = result.width, H = result.height;
+  const c = document.createElement('canvas'); c.width = W * scale; c.height = H * scale;
+  const ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = false; ctx.drawImage(outBuf, 0, 0, W * scale, H * scale);
+  const name = (s.fname || 'sprite').replace(/[\\/:*?"<>|]/g, '_') + (scale > 1 ? `@${scale}x` : '') + '.png';
+  c.toBlob(blob => {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  }, 'image/png');
+}
+$('btnDl1').onclick = () => download(1);
+$('btnDlBig').onclick = () => download(Number(readSettings().exportScale) || 4);
+
+// 啟動
+writeSettings(Object.assign({}, DEFAULTS, store.get('pxconv.settings') || {}));
+fillPresetSelect();
+// 測試用：#demo&palette=game&dither=fs 之類的網址參數
+if (location.hash.startsWith('#demo')) {
+  const patch = {};
+  for (const kv of location.hash.slice(1).split('&').slice(1)) { const [k, v] = kv.split('='); patch[k] = v === 'true' ? true : v === 'false' ? false : decodeURIComponent(v); }
+  const urls = patch.src ? String(patch.src).split(',') : null;
+  delete patch.src;
+  writeSettings(patch);
+  if (urls) { // 需要用 http 開（node tools/serve.js）
+    Promise.all(urls.map(u => fetch(u).then(r => r.blob()).then(b => new File([b], u.split('/').slice(-2).join('_'), { type: b.type }))))
+      .then(fs => openFiles(fs));
+  } else demoImage();
+} else schedule();
+</script>
+</body>
+</html>
