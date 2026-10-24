@@ -95,7 +95,10 @@ function jointsFromPose(kind, lm, img) {
     const near = (lm[11].v + lm[13].v + lm[15].v) >= (lm[12].v + lm[14].v + lm[16].v) ? 0 : 1;
     const nearL = (lm[23].v + lm[25].v + lm[27].v) >= (lm[24].v + lm[26].v + lm[28].v) ? 0 : 1;
     J.shoulder = P(lm[11 + near]); J.elbow = P(lm[13 + near]); J.hand = P(lm[15 + near]);
-    J.hip = P(mid(lm[23], lm[24])); J.knee = P(lm[25 + nearL]); J.foot = P(foot(lm[29 + nearL], lm[31 + nearL]));
+    J.hip = P(lm[23 + nearL]); J.knee = P(lm[25 + nearL]); J.foot = P(foot(lm[29 + nearL], lm[31 + nearL]));
+    // 遠的那條腿也有位置：兩條腿分開切、各自擺動（不用複製）
+    const farL = 1 - nearL;
+    J.hip2 = P(lm[23 + farL]); J.knee2 = P(lm[25 + farL]); J.foot2 = P(foot(lm[29 + farL], lm[31 + farL]));
   } else {
     // 正面、背面：依畫面上的左右分（背面時本人的左手在畫面左邊，所以不看編號、看位置）
     const sL = lm[11].x <= lm[12].x ? 0 : 1, hL = lm[23].x <= lm[24].x ? 0 : 1;

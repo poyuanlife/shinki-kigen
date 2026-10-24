@@ -173,9 +173,12 @@ function inpaint(img, mask) {
 
 // 建立骨架：J 是像素座標，R 是手腳半徑
 // opt.fillArmTorso：側面時，手臂擋住的軀幹（肩到腰）一律補色（照片用：真人手臂常貼在身體後半部）
+// opt.allLegs：髖部以下全部分給腿（照片用：寬褲管超出腿的寬度時，抬腳會在原地留下一截，看起來像多一條腿）
+// 側面的關節有 hip2、knee2、foot2（遠的那條腿）時，兩條腿分開切；沒有的話遠的腿用近的腿複製、畫暗
 function rigBuild(work, kind, J, R, opt = {}) {
   const W = work.width, H = work.height, d = work.data;
-  const limbs = Object.entries(RIG_LIMBS[kind]);
+  const chains = kind === 'side' && J.knee2 ? { leg: RIG_LIMBS.side.leg, legB: ['hip2', 'knee2', 'foot2'], arm: RIG_LIMBS.side.arm } : RIG_LIMBS[kind];
+  const limbs = Object.entries(chains);
   const parts = []; // [{ limb, seg: 'U'|'D' }]
   for (const [name] of limbs) parts.push({ limb: name, seg: 'U' }, { limb: name, seg: 'D' });
   const labels = new Int8Array(W * H).fill(-1); // -1 透明、0 身體、1.. 零件
@@ -190,6 +193,23 @@ function rigBuild(work, kind, J, R, opt = {}) {
       if (dd <= rad && dd < bestD) { bestD = dd; best = 1 + li * 2 + (du <= dl ? 0 : 1); }
     });
     labels[p] = best;
+  }
+  if (opt.allLegs) {
+    const legs = limbs.map((l, i) => [l, i]).filter(([[n]]) => n.startsWith('leg')), arms = limbs.map((l, i) => [l, i]).filter(([[n]]) => n.startsWith('arm'));
+    const hipY = Math.min(...legs.map(([[, c]]) => J[c[0]].y)) + R.leg * 0.3;
+    for (let y = Math.max(0, Math.ceil(hipY)); y < H; y++) for (let x = 0; x < W; x++) {
+      const p = y * W + x; if (labels[p] !== 0) continue;
+      // 垂在大腿旁的手先給手
+      let nearArm = false;
+      for (const [[, [, m, e]]] of arms) if (distSeg(x, y, J[m], J[e]) < R.arm * 1.6) nearArm = true;
+      if (nearArm) continue;
+      let bd = Infinity, bl = 0;
+      for (const [[, [r0, m, e]], li] of legs) {
+        const du = distSeg(x, y, J[r0], J[m]), dl = distSeg(x, y, J[m], J[e]);
+        if (Math.min(du, dl) < bd) { bd = Math.min(du, dl); bl = 1 + li * 2 + (du <= dl ? 0 : 1); }
+      }
+      labels[p] = bl;
+    }
   }
   // 手指、鞋底等超出手腳寬度的邊緣：跟身體沒連在一起的碎塊，歸給最近的手腳（不然手腳動了它們會留在原地）
   {
@@ -246,7 +266,7 @@ function rigBuild(work, kind, J, R, opt = {}) {
   inpaint(base, fill);
   // 每個零件一張圖；上下段在關節附近互相多留一點，彎曲時才不會有縫
   const partImgs = parts.map((pt, i) => {
-    const id = i + 1, sib = pt.seg === 'U' ? id + 1 : id - 1, chain = RIG_LIMBS[kind][pt.limb];
+    const id = i + 1, sib = pt.seg === 'U' ? id + 1 : id - 1, chain = chains[pt.limb];
     const jm = J[chain[1]], rad = pt.limb.startsWith('leg') ? R.leg : R.arm;
     const out = new ImageData(W, H), o = out.data;
     for (let p = 0; p < W * H; p++) {
@@ -256,8 +276,8 @@ function rigBuild(work, kind, J, R, opt = {}) {
     }
     return toCanvas(out);
   });
-  const limbLen = name => { const [a, b, c] = RIG_LIMBS[kind][name]; return Math.hypot(J[b].x - J[a].x, J[b].y - J[a].y) + Math.hypot(J[c].x - J[b].x, J[c].y - J[b].y); };
-  return { kind, W, H, J, R, labels, parts, base: toCanvas(base), partImgs, limbLen };
+  const limbLen = name => { const [a, b, c] = chains[name]; return Math.hypot(J[b].x - J[a].x, J[b].y - J[a].y) + Math.hypot(J[c].x - J[b].x, J[c].y - J[b].y); };
+  return { kind, W, H, J, R, labels, parts, base: toCanvas(base), partImgs, limbLen, chains, farLeg: chains.legB ? 'legB' : null };
 }
 
 // ---------- 擺姿勢 ----------
@@ -495,7 +515,7 @@ function rigWeaponPrep(view, HN, s) {
 function rigRender(rig, pose, mx, my) {
   const c = document.createElement('canvas'); c.width = rig.W + mx * 2; c.height = rig.H + my * 2;
   const ctx = c.getContext('2d'); ctx.imageSmoothingQuality = 'high';
-  const J = rig.J, chains = RIG_LIMBS[rig.kind], up = pose.up || 0, lean = pose.lean || 0, pv = J.pelvis;
+  const J = rig.J, chains = rig.chains || RIG_LIMBS[rig.kind], up = pose.up || 0, lean = pose.lean || 0, pv = J.pelvis;
   // 身體（含頭、手）以腰為中心前後傾；腳不跟著傾
   const bodyT = () => { ctx.translate(mx, my - up); ctx.translate(pv.x, pv.y); ctx.rotate(lean); ctx.translate(-pv.x, -pv.y); };
   const drawWeapon = (lp, name) => {
@@ -513,11 +533,11 @@ function rigRender(rig, pose, mx, my) {
   };
   // mode：'all' 畫整隻手腳；'weapon' 只畫武器（武器在身體後面時先畫）
   const drawLimb = (key, mode = 'all') => {
-    const lp = pose.limbs[key] || {}, name = key.replace('Far', ''), i = Object.keys(chains).indexOf(name), far = key.endsWith('Far');
+    const realFar = key === 'legFar' && rig.farLeg, lp = pose.limbs[key] || {}, name = realFar ? rig.farLeg : key.replace('Far', ''), i = Object.keys(chains).indexOf(name), far = key.endsWith('Far');
     const [r0, m] = chains[name], R0 = J[r0], M = J[m], wpOk = !far && lp.weapon && (mode === 'weapon') === !!lp.weapon.behind;
     if (mode === 'weapon' && !wpOk) return;
     ctx.save();
-    if (far) ctx.filter = 'brightness(0.72)';
+    if (far) ctx.filter = realFar ? 'brightness(0.9)' : 'brightness(0.72)';
     if (name.startsWith('arm')) bodyT(); else ctx.translate(mx, my - up);
     ctx.translate(R0.x, R0.y + (lp.dy || 0)); ctx.rotate(lp.a1 || 0); ctx.scale(1, lp.sy || 1); ctx.translate(-R0.x, -R0.y);
     ctx.save();
@@ -532,7 +552,7 @@ function rigRender(rig, pose, mx, my) {
   // 手在畫面上的位置：用跟 drawLimb 一樣的順序算變換矩陣（弓、弦、箭要接在手上）
   const deg = r => r * 180 / Math.PI;
   const handAt = key => {
-    const lp = pose.limbs[key] || {}, name = key.replace('Far', ''), [r0, m, e] = chains[name], R0 = J[r0], M = J[m], E = J[e];
+    const lp = pose.limbs[key] || {}, name = key === 'legFar' && rig.farLeg ? rig.farLeg : key.replace('Far', ''), [r0, m, e] = chains[name], R0 = J[r0], M = J[m], E = J[e];
     let u = new DOMMatrix().translate(mx, my - up);
     if (name.startsWith('arm')) u = u.translate(pv.x, pv.y).rotate(deg(lean)).translate(-pv.x, -pv.y);
     u = u.translate(R0.x, R0.y + (lp.dy || 0)).rotate(deg(lp.a1 || 0)).scale(1, lp.sy || 1).translate(-R0.x, -R0.y);
@@ -634,12 +654,13 @@ function generateRigSprite(images, s, joints, ver) {
     // Q 版：先把原圖改成 Q 版比例，之後都在新的圖上做
     const rp = s.chibiOn ? rigReproportion(work, Jn, s) : { work, joints: Jn };
     const rwork = rp.work;
-    const J = {}; for (const k of RIG_JOINTS[kind]) J[k] = { x: rp.joints[k].x * HN, y: rp.joints[k].y * HN };
+    // 一般關節 + 額外的（照片側面的第二條腿 hip2、knee2、foot2）
+    const J = {}; for (const k of new Set([...RIG_JOINTS[kind], ...Object.keys(rp.joints)])) J[k] = { x: rp.joints[k].x * HN, y: rp.joints[k].y * HN };
     const R0 = rigAutoRadii(rwork, J, kind), R = { leg: R0.leg * s.rigLegW / 100, arm: R0.arm * s.rigArmW / 100 };
     const key = JSON.stringify([ver, id, Jn, R, s.bgMode, s.bgManual, s.bgTol, s.bgFlood, s.sideFacing, rwork.width,
       s.chibiOn && [s.chibiHeads, s.chibiHead, s.chibiLegs, s.chibiWidth]]);
     let rig = ver != null && rigCache.get(id);
-    if (!rig || rig.key !== key) { rig = rigBuild(rwork, kind, J, R, { fillArmTorso: !!s.photo }); rig.key = key; if (ver != null) rigCache.set(id, rig); }
+    if (!rig || rig.key !== key) { rig = rigBuild(rwork, kind, J, R, { fillArmTorso: !!s.photo, allLegs: !!s.photo }); rig.key = key; if (ver != null) rigCache.set(id, rig); }
     rig.weapon = weapon; rig.bow = bow; rig.arrow = arrow; rig.lineW = lineW;
     const o = out[id] = { rig, acts: {} };
     // 第一輪只量每一幀的範圍（不留圖，省記憶體；手機上幾十張大圖會撐爆）

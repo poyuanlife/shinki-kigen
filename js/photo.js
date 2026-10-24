@@ -49,6 +49,23 @@ const PhotoHero = (() => {
     if (P === p) p.spr = specKey(p.cls);
   }
 
+  // ---------- 拍照範例（簡單的人形剪影） ----------
+  const SIL = {
+    // 正面：手臂離身體一個拳頭、雙腳微開
+    front: '<circle cx="50" cy="24" r="15"/><rect x="45" y="37" width="10" height="8"/><path d="M33 46 Q50 41 67 46 L66 104 Q50 108 34 104 Z"/>' +
+      '<path d="M35 50 L16 110" class="lb"/><path d="M65 50 L84 110" class="lb"/><path d="M43 104 L39 200" class="lb"/><path d="M57 104 L61 200" class="lb"/>' +
+      '<ellipse cx="37" cy="204" rx="9" ry="4"/><ellipse cx="63" cy="204" rx="9" ry="4"/>',
+    // 側面（朝左）：手臂自然垂在身體旁、兩腳一前一後一點點
+    side: '<circle cx="50" cy="24" r="15"/><path d="M36 22 L31 28 L37 30 Z"/><rect x="45" y="37" width="10" height="8"/><path d="M38 46 Q52 41 64 47 L62 104 Q50 108 40 104 Z"/>' +
+      '<path d="M51 52 L44 112" class="lb"/><path d="M46 104 L42 200" class="lb"/><path d="M56 104 L60 200" class="lb"/>' +
+      '<ellipse cx="38" cy="204" rx="10" ry="4"/><ellipse cx="54" cy="204" rx="10" ry="4"/>',
+    // 背面：跟正面一樣的姿勢，頭髮畫深一點表示背面
+    back: '<circle cx="50" cy="24" r="15"/><path d="M36 20 Q50 2 64 20 L64 32 Q50 40 36 32 Z" class="hair"/><rect x="45" y="37" width="10" height="8"/><path d="M33 46 Q50 41 67 46 L66 104 Q50 108 34 104 Z"/>' +
+      '<path d="M35 50 L16 110" class="lb"/><path d="M65 50 L84 110" class="lb"/><path d="M43 104 L39 200" class="lb"/><path d="M57 104 L61 200" class="lb"/>' +
+      '<ellipse cx="37" cy="204" rx="9" ry="4"/><ellipse cx="63" cy="204" rx="9" ry="4"/>',
+  };
+  const exampleHtml = id => `<div class="phEx"><svg viewBox="0 0 100 212" aria-hidden="true">${SIL[id]}</svg><span>範例</span></div>`;
+
   // ---------- 畫面 ----------
   function build() {
     panel = document.createElement('div');
@@ -56,15 +73,33 @@ const PhotoHero = (() => {
     panel.innerHTML = `
       <div class="phBox">
         <h2>用照片當主角<span class="close" id="phClose">×</span></h2>
-        <div class="phHint">請別人幫你拍<b>三張全身照</b>：正面、側面、背面。<b>手臂稍微張開</b>（離身體約一個拳頭）、<b>雙腳微開</b>、腳要入鏡，背景越單純越好。
-          照片只在這台裝置上處理和保存，<b>不會上傳</b>。第一次使用要下載去背工具（約 13 MB）。</div>
+        <div class="phHint">先用手機拍好<b>三張全身照</b>（正面、側面、背面），再從相簿選進來。照片只在這台裝置上處理和保存，<b>不會上傳</b>。第一次使用要下載去背工具（約 13 MB）。</div>
+        <details class="phTips" open>
+          <summary>拍照範例與注意事項</summary>
+          <div class="phTipCols">
+            <ul class="ok">
+              <li><b>全身入鏡</b>，頭頂到腳底都要拍到，人站在畫面中間</li>
+              <li><b>手臂稍微張開</b>，離身體約一個拳頭（像下面的範例）</li>
+              <li><b>雙腳微微分開</b>，站直</li>
+              <li><b>側面</b>：身體轉 90 度，朝左朝右都可以</li>
+              <li>背景單純、光線充足；三張照片穿同一套衣服</li>
+              <li>請別人幫忙拍，或用手機的倒數計時自己拍</li>
+            </ul>
+            <ul class="ng">
+              <li>手插口袋、雙手抱胸、手貼著身體</li>
+              <li>拿著東西、背著大包包</li>
+              <li>坐著、蹲著、腳被東西擋住</li>
+              <li>多個人一起入鏡</li>
+              <li>太暗、逆光</li>
+            </ul>
+          </div>
+        </details>
         <div class="phSlots">${SLOTS.map(s => `
           <div class="phSlot" data-id="${s.id}">
             <div class="phName">${s.name}<small>${s.tip}</small></div>
-            <div class="phImg"><span>還沒拍</span></div>
+            <div class="phImg">${exampleHtml(s.id)}</div>
             <div class="phBtns">
-              <label class="phBtn">拍照<input type="file" accept="image/*" capture="environment" hidden></label>
-              <label class="phBtn">相簿<input type="file" accept="image/*" hidden></label>
+              <label class="phBtn">選擇照片<input type="file" accept="image/*" hidden></label>
             </div>
           </div>`).join('')}
         </div>
@@ -120,7 +155,7 @@ const PhotoHero = (() => {
       const im = new Image(); im.src = URL.createObjectURL(r.blob); box.appendChild(im);
       status(r.feetCut ? `${SLOTS.find(s => s.id === id).name}：腳好像沒有完全入鏡，動作可能會怪怪的，建議重拍。` : `${SLOTS.find(s => s.id === id).name}：去背完成。`, r.feetCut);
     } catch (e) {
-      box.innerHTML = '<span>失敗</span>';
+      box.innerHTML = exampleHtml(id);
       status('去背失敗：' + (e && e.message || e), true);
     }
     busy = false;
