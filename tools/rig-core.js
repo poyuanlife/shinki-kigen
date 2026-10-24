@@ -251,6 +251,8 @@ function rigBuild(work, kind, J, R, opt = {}) {
   // 身體：手腳拿掉後，左右都還有身體的地方（被手擋住的軀幹）補色，其他變透明
   const base = new ImageData(new Uint8ClampedArray(d), W, H), bd = base.data, fill = new Uint8Array(W * H);
   const reach = kind === 'side' ? H * 0.2 : H * 0.06;
+  // 照片：大腿最上面一段也留在身體上，腳擺動時從它下面滑過，髖部才不會破洞
+  const legTop = opt.allLegs ? Math.min(...limbs.filter(([n]) => n.startsWith('leg')).map(([, c]) => J[c[0]].y)) + R.leg : -1;
   for (let y = 0; y < H; y++) {
     const left = new Float32Array(W), right = new Float32Array(W);
     let last = -1e9;
@@ -260,6 +262,7 @@ function rigBuild(work, kind, J, R, opt = {}) {
     for (let x = 0; x < W; x++) {
       const p = y * W + x; if (labels[p] <= 0) continue;
       const armTorso = opt.fillArmTorso && kind === 'side' && limbs[(labels[p] - 1) >> 1][0].startsWith('arm') && y >= J.shoulder.y && y <= J.pelvis.y;
+      if (y < legTop && limbs[(labels[p] - 1) >> 1][0].startsWith('leg')) continue; // 保留原本的像素
       if ((left[x] <= reach && right[x] <= reach) || armTorso) fill[p] = 1; else bd[p * 4 + 3] = 0;
     }
   }

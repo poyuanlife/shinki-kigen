@@ -163,6 +163,7 @@ const PhotoHero = (() => {
     }
     busy = false;
     $('phMake').disabled = !(cut.front && cut.side && cut.back);
+    $('phDebug').classList.toggle('hidden', !(cut.front || cut.side || cut.back));
   }
 
   async function make() {
@@ -175,8 +176,8 @@ const PhotoHero = (() => {
       status(made.warn && made.warn.length ? made.warn.join(' ') : '完成！下面是預覽，滿意的話按「使用這個角色」。');
       showPreview(made);
       $('phUse').classList.remove('hidden'); $('phDebug').classList.remove('hidden');
-    } catch (e) { status('產生失敗：' + (e && e.message || e), true); }
-    busy = false; $('phMake').disabled = false;
+    } catch (e) { status('產生失敗：' + (e && e.message || e) + '　可以按「儲存檢查用圖片」傳給開發者。', true); }
+    busy = false; $('phMake').disabled = false; $('phDebug').classList.remove('hidden');
   }
 
   // 預覽：每個動作一列、四個方向一起播

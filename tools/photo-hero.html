@@ -96,9 +96,10 @@ function jointsFromPose(kind, lm, img) {
     const nearL = (lm[23].v + lm[25].v + lm[27].v) >= (lm[24].v + lm[26].v + lm[28].v) ? 0 : 1;
     J.shoulder = P(lm[11 + near]); J.elbow = P(lm[13 + near]); J.hand = P(lm[15 + near]);
     J.hip = P(lm[23 + nearL]); J.knee = P(lm[25 + nearL]); J.foot = P(foot(lm[29 + nearL], lm[31 + nearL]));
-    // 遠的那條腿也有位置：兩條腿分開切、各自擺動（不用複製）
-    const farL = 1 - nearL;
-    J.hip2 = P(lm[23 + farL]); J.knee2 = P(lm[25 + farL]); J.foot2 = P(foot(lm[29 + farL], lm[31 + farL]));
+    // 兩條腿明顯分開（膝蓋或腳踝前後差距夠大）才分開切、各自擺動；
+    // 幾乎重疊時硬切會切錯（腳趾、腳跟分到另一條腿，擺動時碎片亂飛），改成一條腿 + 複製畫暗的後腳
+    const farL = 1 - nearL, gap = Math.max(Math.abs(lm[25].x - lm[26].x), Math.abs(lm[27].x - lm[28].x));
+    if (gap > box.h * 0.07) { J.hip2 = P(lm[23 + farL]); J.knee2 = P(lm[25 + farL]); J.foot2 = P(foot(lm[29 + farL], lm[31 + farL])); }
   } else {
     // 正面、背面：依畫面上的左右分（背面時本人的左手在畫面左邊，所以不看編號、看位置）
     const sL = lm[11].x <= lm[12].x ? 0 : 1, hL = lm[23].x <= lm[24].x ? 0 : 1;
@@ -127,6 +128,8 @@ window.makeCharacter = async (photos, onMsg) => {
   const s = Object.assign({}, SPRITE_DEFAULTS, RIG_DEFAULTS, {
     animMode: 'rig', dirCount: '4', w: 48, h: 64, bgMode: 'off', photo: true, photoQ: 2, outline: 'none', sideFacing: 'left',
     rigFrames: '6', idleFrames: '4', actRun: true, actAtk: true, actHit: true, actDead: true,
+    // 真人比例（腿長）：走路抬腳、擺手大一點才看得出來；跑步膝蓋彎小一點，小腿才不會甩成水平
+    rigLift: 24, rigArm: 30, rigLeg: 18, runLeg: 28, runKnee: 50, runArm: 30, runLean: 8,
   });
   const res = generateRigSprite(images, s, joints);
   if (!res.actions) throw new Error((res.warn || []).join(' ') || '產生失敗');
