@@ -2443,6 +2443,7 @@ function renderMenu() {
   $('optMusic').disabled = !c.music; $('optSfx').disabled = !c.sfx;
   document.querySelectorAll('#optQuality button').forEach(b => b.classList.toggle('on', +b.dataset.q === qualityIdx));
   document.querySelectorAll('#optDir button').forEach(b => b.classList.toggle('on', b.dataset.d === DIR_MODE));
+  document.querySelectorAll('#optInput button').forEach(b => b.classList.toggle('on', b.dataset.i === INPUT_MODE));
   document.querySelectorAll('#optHotkey button').forEach(b => b.classList.toggle('on', b.dataset.h === HOTKEY_MODE));
   $('saveInfo').textContent = G.testMode ? '（測試模式：不會存檔）' : G.lastSave ? `上次存檔：${fmtTime(G.lastSave)}` : '';
 }
@@ -2457,6 +2458,13 @@ $('optMusicOn').onchange = e => { Snd.setEnabled('music', e.target.checked); ren
 $('optSfxOn').onchange = e => { Snd.setEnabled('sfx', e.target.checked); renderMenu(); if (e.target.checked) Snd.play('ui'); };
 document.querySelectorAll('#optQuality button').forEach(b => { b.onclick = () => { setQuality(+b.dataset.q); Snd.play('ui'); }; });
 document.querySelectorAll('#optHotkey button').forEach(b => { b.onclick = () => { setHotkeyMode(b.dataset.h); renderMenu(); renderHotbar(); Snd.play('ui'); }; });
+// 操作模式：觸控介面在載入時就建好了，所以切換要存檔、重新載入
+document.querySelectorAll('#optInput button').forEach(b => { b.onclick = () => {
+  if (b.dataset.i === INPUT_MODE) return;
+  try { localStorage.setItem('shinki.inputMode', b.dataset.i); } catch (e) { addLog('這個瀏覽器不能儲存設定，無法切換', '#f88'); return; }
+  saveGame();
+  location.reload();
+}; });
 document.querySelectorAll('#optDir button').forEach(b => { b.onclick = () => { setDirMode(b.dataset.d); P && (P._dir = undefined); for (const e of G.enemies) e._dir = undefined; renderMenu(); Snd.play('ui'); }; });
 $('btnCamp').onclick = () => { closeMenu(); returnToCamp(); };
 $('btnPhoto').onclick = () => { closeMenu(); PhotoHero.open(); };

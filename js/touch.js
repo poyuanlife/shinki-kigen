@@ -4,8 +4,11 @@
 //  網址加上 #touch 可以在電腦上強制開啟（測試用）
 // =====================================================
 
-const TOUCH = /[#&?-]touch/.test(location.href) ||
-  matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && !matchMedia('(pointer: fine)').matches);
+// 操作模式（系統選單可以切換）：auto 自動判斷、touch 平板（觸控按鈕）、pc 鍵盤滑鼠
+// 例如沒接滑鼠的筆電，可以切成平板模式，用觸控板點畫面上的搖桿和按鈕
+const INPUT_MODE = (() => { try { return localStorage.getItem('shinki.inputMode') || 'auto'; } catch (e) { return 'auto'; } })();
+const TOUCH = /[#&?-]touch/.test(location.href) || INPUT_MODE === 'touch' || (INPUT_MODE === 'auto' &&
+  (matchMedia('(pointer: coarse)').matches || (navigator.maxTouchPoints > 0 && !matchMedia('(pointer: fine)').matches)));
 if (TOUCH) document.documentElement.classList.add('touch');
 
 const TouchUI = (() => {
