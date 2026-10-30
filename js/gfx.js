@@ -43,6 +43,20 @@ function pickDir(o, a) {
   if (o) o._dir = d;
   return d;
 }
+// 8 方向的角色圖（直欄：下、上、左、右、左下、右下、左上、右上）
+const DIR8_CENTER = [Math.PI / 2, -Math.PI / 2, Math.PI, 0, Math.PI * 3 / 4, Math.PI / 4, -Math.PI * 3 / 4, -Math.PI / 4];
+const DIR8_OF_SECTOR = [3, 5, 0, 4, 2, 6, 1, 7];   // 從右邊開始、順時針每 45° 一格
+function pickDir8(o, a) {
+  const d = DIR8_OF_SECTOR[((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8];
+  if (o && o._dir8 !== undefined && o._dir8 !== d) {
+    // 還在原本方向的 22.5°+8° 範圍內就不換，避免在兩個方向中間一直切換
+    let diff = Math.abs(a - DIR8_CENTER[o._dir8]) % (Math.PI * 2);
+    if (diff > Math.PI) diff = Math.PI * 2 - diff;
+    if (diff < Math.PI / 8 + 0.14) return o._dir8;
+  }
+  if (o) o._dir8 = d;
+  return d;
+}
 function dir4(a) {
   const c = Math.cos(a), s = Math.sin(a);
   if (Math.abs(c) >= Math.abs(s)) return c >= 0 ? 3 : 2;
@@ -103,7 +117,19 @@ function animLen(spec, act) { const a = SPEC[spec].anims[act]; return a ? a.n * 
 // 動作沒有圖時的替代：跑步 → 走路，其他 → 站姿 → 走路
 // sp.res：素材的精細度（0.5 = 素材 1 像素畫成 1 個畫面像素，用在「圖片批次轉換」做的高解析角色）
 // a.ox / a.oy：這個動作自己的腳底位置（攻擊、倒下的格子比較大）
-function drawSpec(c, specName, act, dir, t, x, y, scale = PX, flash = 0) {
+// 把一格圖整個染成某個顏色（受傷閃紅用），疊在原本的圖上
+const TINT_CV = document.createElement('canvas'), TINT_CTX = TINT_CV.getContext('2d');
+function drawTinted(c, im, sx, sy, sw, sh, dx, dy, dw, dh, rgb, alpha) {
+  if (TINT_CV.width < sw) TINT_CV.width = sw;
+  if (TINT_CV.height < sh) TINT_CV.height = sh;
+  const t = TINT_CTX;
+  t.globalCompositeOperation = 'source-over'; t.clearRect(0, 0, sw, sh);
+  t.drawImage(im, sx, sy, sw, sh, 0, 0, sw, sh);
+  t.globalCompositeOperation = 'source-atop'; t.fillStyle = `rgb(${rgb})`; t.fillRect(0, 0, sw, sh);
+  c.save(); c.globalAlpha = alpha; c.drawImage(TINT_CV, 0, 0, sw, sh, dx, dy, dw, dh); c.restore();
+}
+// tint：給的話 flash 改成染成這個顏色（例如受傷的紅色），不給是原本的變亮閃白
+function drawSpec(c, specName, act, dir, t, x, y, scale = PX, flash = 0, tint = null) {
   const sp = SPEC[specName];
   const a = sp.anims[act] || (act === 'run' && sp.anims.walk) || sp.anims.idle || sp.anims.walk;
   const im = img(a.file);
@@ -114,11 +140,18 @@ function drawSpec(c, specName, act, dir, t, x, y, scale = PX, flash = 0) {
   if (a.strip) { col = f; row = 0; } else { col = a.oneDir ? 0 : dir; row = (a.row || 0) + f; }
   scale *= sp.res || 1;
   const dx = snap(x - (a.ox !== undefined ? a.ox : sp.ox) * scale), dy = snap(y - (a.oy !== undefined ? a.oy : sp.oy) * scale);
-  const draw = () => c.drawImage(im, col * a.cw, row * a.ch, a.cw, a.ch, dx, dy, a.cw * scale, a.ch * scale);
+  // 只有一格的站姿（例如弓箭手）：上半身每隔一下往下沉 1 素材像素，看起來在呼吸，不會像貼紙一樣僵住
+  const breathe = act === 'idle' && a.n === 1 && sp.custom && Math.sin(t * 2.6) > 0;
+  const draw = breathe ? () => {
+    const cut = Math.round(a.ch * 0.6), sy = row * a.ch, sx = col * a.cw;
+    c.drawImage(im, sx, sy + cut, a.cw, a.ch - cut, dx, dy + cut * scale, a.cw * scale, (a.ch - cut) * scale);
+    c.drawImage(im, sx, sy, a.cw, cut, dx, snap(dy + scale), a.cw * scale, cut * scale);
+  } : () => c.drawImage(im, col * a.cw, row * a.ch, a.cw, a.ch, dx, dy, a.cw * scale, a.ch * scale);
   // 照片主角：平滑縮放（像素畫才要保持銳利）
   if (sp.smooth) { c.save(); c.imageSmoothingEnabled = true; c.imageSmoothingQuality = 'high'; }
   draw();
-  if (flash > 0) { c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.min(1, flash); draw(); c.restore(); }
+  if (flash > 0 && tint) drawTinted(c, im, col * a.cw, row * a.ch, a.cw, a.ch, dx, dy, a.cw * scale, a.ch * scale, tint, Math.min(1, flash));
+  else if (flash > 0) { c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = Math.min(1, flash); draw(); c.restore(); }
   if (sp.smooth) c.restore();
   return true;
 }
@@ -128,18 +161,25 @@ const HERO_SCALE = PX;
 const heroSpec = p => (p.spr && SPEC[p.spr] ? p.spr : clsOf(p).spr);
 function heroAnim(p) {
   if (p.dead) return ['dead', p.deadT || 0];
-  if (p.act && !(p.moving > 0.5 && p.act.n === 'shoot')) return ['attack', p.act.t / p.act.dur * animLen(heroSpec(p), 'attack')];
+  // p0：連續攻擊時從動畫中段（舉弓／舉刀）接著播
+  if (p.act && (p.act.stand || !(p.moving > 0.5 && p.act.n === 'shoot'))) {
+    const p0 = p.act.p0 || 0;
+    return ['attack', (p0 + (1 - p0) * Math.min(1, p.act.t / p.act.dur)) * animLen(heroSpec(p), 'attack')];
+  }
   if (p.moving > 0.3) return [p.running ? 'run' : 'walk', p.runT || 0];
   if (p.hurt > 0) return ['hit', 0.12 - p.hurt];
   return ['idle', G.t];
 }
 function drawHero(c, x, y, p, scale = HERO_SCALE, dirOverride) {
   const [act, t] = heroAnim(p);
-  const dir = dirOverride !== undefined ? dirOverride : pickDir(p, screenAngle(p.face));
+  const sa = screenAngle(p.face);
+  const dir = dirOverride !== undefined ? dirOverride : SPEC[heroSpec(p)].dirs === 8 ? pickDir8(p, sa) : pickDir(p, sa);
   if (!p.dead) { c.fillStyle = 'rgba(0,0,0,0.3)'; ell(c, x, y - scale, 6 * scale, 2.5 * scale); c.fill(); }
   if (p.buffs && p.buffs.stim > 0) { c.fillStyle = 'rgba(255,60,60,0.16)'; ell(c, x, y - 8 * scale, 11 * scale, 12 * scale); c.fill(); }
   if (p.buffs && p.buffs.kongou > 0) { c.fillStyle = 'rgba(255,210,90,0.18)'; ell(c, x, y - 8 * scale, 11 * scale, 12 * scale); c.fill(); }
-  drawSpec(c, heroSpec(p), act, dir, t, x, y, scale, p.hurt > 0 ? 0.6 : 0);
+  // 受傷：整個人閃紅，慢慢退掉
+  const red = p.redT > 0 ? p.redT / RED_T : 0;
+  drawSpec(c, heroSpec(p), act, dir, t, x, y, scale, red * 0.65, red > 0 ? '255,40,40' : null);
   if (p.shield > 0) {
     c.save(); c.globalAlpha = 0.25 + Math.sin(performance.now() / 150) * 0.08;
     c.strokeStyle = '#8fe8a0'; c.lineWidth = 1.5; ell(c, x, y - 8 * scale, 11 * scale, 12 * scale); c.stroke();
@@ -436,7 +476,7 @@ function loadCustomSpecs() {
         if (['attack', 'hit', 'dead'].includes(name)) anims[name].once = true;
       }
       const base = j.anims.idle || j.anims.walk;
-      SPEC[key] = { ox: base.ox, oy: base.oy, h: Math.round(j.cell[1] * res * 0.9), res, anims, custom: true };
+      SPEC[key] = { ox: base.ox, oy: base.oy, h: Math.round(j.cell[1] * res * 0.9), res, anims, custom: true, dirs: (j.dirs || []).length === 8 ? 8 : 4 };
       // 弓箭手：射出去的箭（箭頭朝右），畫面上 1 素材像素 = 1 畫面像素
       if (j.projectile) SPEC[key].projectile = { file: `../custom/${dir}/${j.projectile.file}`, w: j.projectile.w, h: j.projectile.h };
     }).catch(() => { /* 沒有就用原本的圖 */ })));

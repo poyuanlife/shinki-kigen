@@ -31,7 +31,9 @@ const RIG_DEFAULTS = { animMode: 'rig', rigFrames: '4', rigLeg: 16, rigKnee: 30,
   chibiOn: false, chibiHeads: 3.25, chibiHead: 140, chibiLegs: 45, chibiWidth: 110,
   idleFrames: '1', actRun: true, runFrames: '6', runLeg: 34, runKnee: 70, runArm: 30, runLean: 10, runBob: 3,
   actAtk: true, atkFrames: '6', weaponType: 'auto', bowLen: 60, arrowLen: 55, weaponLen: 50, weaponGrip: 12, weaponFlip: false, atkTrail: true, actHit: true, actDead: true };
+// 斜向（斜前方、斜後方）看得到兩隻手、兩隻腳，用正面的骨架和動作
 const rigKind = id => id === 'side' ? 'side' : 'front';
+const rigIsBack = view => view === 'back' || view === 'backDiag';
 
 // ---------- 自動找關節 ----------
 // 依一般人體比例（約 7 頭身）抓高度，再從輪廓找左右位置。不準的話在畫面上拖曳修正。
@@ -378,7 +380,7 @@ function rigAttackPose(rig, t, dt, view, trailOn) {
     P.limbs.arm = { a1, a2, weapon: { angle: rigRad(k.w), trailFrom: trail ? rigRad(prev.w) : null } };
     P.limbs.armFar = { a1: a1 - rigRad(6), a2 };
   } else {
-    const back = view === 'back', sg = back ? -1 : 1, wa = d => rigRad(back ? 180 - d : d);
+    const back = rigIsBack(view), sg = back ? -1 : 1, wa = d => rigRad(back ? 180 - d : d);
     const held = back ? 'armR' : 'armL', other = back ? 'armL' : 'armR', angle = wa(k.w);
     // 背面看時，刀在身體前面的時候會被身體擋住
     P.limbs[held] = { a1: sg * rigRad(k.arm[0]), a2: sg * rigRad(k.arm[1]),
@@ -458,7 +460,7 @@ function rigBowPose(rig, t, view) {
     P.limbs.armFar = { a1: rigRad(k.pullArm[0]), a2: rigRad(k.pullArm[1]) };
     P.bow = { hand: 'arm', pull: 'armFar', angle: rigRad(k.aim), draw: k.draw, arrow: k.arrow > 0.5 };
   } else {
-    const back = view === 'back', sg = back ? -1 : 1, bowH = back ? 'armR' : 'armL', pullH = back ? 'armL' : 'armR';
+    const back = rigIsBack(view), sg = back ? -1 : 1, bowH = back ? 'armR' : 'armL', pullH = back ? 'armL' : 'armR';
     P.limbs[bowH] = { a1: sg * rigRad(k.bowArm[0]), a2: sg * rigRad(k.bowArm[1]) };
     P.limbs[pullH] = { a1: sg * rigRad(k.pullArm[0]), a2: sg * rigRad(k.pullArm[1]) };
     P.bow = { hand: bowH, pull: pullH, angle: back ? 0 : Math.PI, draw: k.draw * 0.6, arrow: false, behind: false };
@@ -624,7 +626,6 @@ function generateRigSprite(images, s, joints, ver) {
   const prep = prepViews(images, s);
   if (!prep.views) return { warn: prep.warn };
   const warn = prep.warn.slice(), views = prep.views;
-  if (s.dirCount === '8') warn.push('骨架模式目前只做 4 方向（下、上、左、右），斜向之後再做。');
   const W = clamp(s.w | 0, 8, 256), H = clamp(s.h | 0, 8, 256), ol = s.outline === 'outer' ? 1 : 0;
   const HN = RIG_HN;
   const marg = a => a.big ? [Math.round(HN * 0.9), Math.round(HN * 0.6)] : [Math.round(HN * 0.4), Math.round(HN * 0.12)]; // 四周留的空間：攻擊要放得下刀
@@ -649,10 +650,21 @@ function generateRigSprite(images, s, joints, ver) {
   if (s.actHit) acts.push({ id: 'hit', label: '受傷', name: 'Hit', N: 3, big: true, pose: (rig, f, n) => rigHurtPose(rig, 1 - f / n) });
   if (s.actDead) acts.push({ id: 'dead', label: '倒下', name: 'Dead', N: 4, big: true, pose: (rig, f, n) => rigDeadPose(rig, f, n) });
   const out = {}, info = {};
-  for (const id of ['front', 'back', 'side']) {
+  // 每個角度縮成一樣高；側面、斜向在計算時一律用朝左的
+  const works = {}, ids = ['front', 'back', 'side'];
+  for (const id of ids) { works[id] = normView(views[id], HN); if (id === 'side' && s.sideFacing === 'right') works[id] = mirror(works[id]); }
+  // 8 方向：斜前方（朝左下）、斜後方（朝左上）。自己放的圖跟側面圖同方向；沒放的用正面、側面、背面合成
+  if (s.dirCount === '8') {
+    for (const [id, th] of [['frontDiag', 45], ['backDiag', 135]]) {
+      let w = null;
+      if (views[id]) { w = normView(views[id], HN); if (s.sideFacing === 'right') w = mirror(w); }
+      else { const im = synthDiag(works.front, works.side, works.back, th, s.diagSide / 50), b = bbox(im, 128); if (b) w = normView({ img: im, box: b }, HN); }
+      if (w) { works[id] = w; ids.push(id); } else warn.push(`「${id === 'frontDiag' ? '斜前方' : '斜後方'}」做不出來，用${id === 'frontDiag' ? '正面' : '背面'}代替。`);
+    }
+  }
+  for (const id of ids) {
     const kind = rigKind(id);
-    let work = normView(views[id], HN);
-    if (id === 'side' && s.sideFacing === 'right') work = mirror(work); // 計算時一律用朝左的側面
+    const work = works[id];
     const Jn = (joints && joints[id]) || rigAutoJoints(work, kind);
     // Q 版：先把原圖改成 Q 版比例，之後都在新的圖上做
     const rp = s.chibiOn ? rigReproportion(work, Jn, s) : { work, joints: Jn };
@@ -767,14 +779,17 @@ function generateRigSprite(images, s, joints, ver) {
   }
   // 側面在計算時已統一朝左：左 = 原樣，右 = 鏡像
   const actions = acts.map(a => {
-    const v = sp[a.id], dirs = [v.front, v.back, v.side, v.side.map(mirror)].map(fr => fr.map(finish)), order = [];
-    for (let f = 0; f < a.N; f++) for (let d = 0; d < 4; d++) order.push(dirs[d][f]);
-    return { id: a.id, label: a.label, name: a.name, W: a.W * q, H: a.H * q, N: a.N, dirs, sheet: compose(order, 4, a.N, a.W * q, a.H * q),
+    // 直欄：下、上、左、右（8 方向再加：左下、右下、左上、右上）
+    const v = sp[a.id], raw = [v.front, v.back, v.side, v.side.map(mirror)];
+    if (s.dirCount === '8') { const fd = v.frontDiag || v.front, bd = v.backDiag || v.back; raw.push(fd, fd.map(mirror), bd, bd.map(mirror)); }
+    const dirs = raw.map(fr => fr.map(finish)), C = dirs.length, order = [];
+    for (let f = 0; f < a.N; f++) for (let d = 0; d < C; d++) order.push(dirs[d][f]);
+    return { id: a.id, label: a.label, name: a.name, W: a.W * q, H: a.H * q, N: a.N, dirs, sheet: compose(order, C, a.N, a.W * q, a.H * q),
       ox: a.W * q / 2, oy: (a.H - ol) * q };
   });
   const walk = actions[0], idle = actions[1];
   return {
-    W: W * q, H: H * q, q, photo, cols: 4, frames: walk.N, walk: walk.dirs, idle: idle.dirs.map(fr => fr[0]), actions, warn, rig: info,
+    W: W * q, H: H * q, q, photo, cols: walk.dirs.length, frames: walk.N, walk: walk.dirs, idle: idle.dirs.map(fr => fr[0]), actions, warn, rig: info,
     base: { sprites: { front: sp.idle.front[0], back: sp.idle.back[0], side: sp.idle.side[0] }, pal, synth: {} },
     walkSheet: walk.sheet, idleSheet: idle.sheet, projectile, weaponKind: isBow ? 'bow' : weapon ? 'sword' : null,
   };

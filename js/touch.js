@@ -112,10 +112,16 @@ const TouchUI = (() => {
     ui.addEventListener('contextmenu', e => e.preventDefault());
   }
 
-  // 每幀：處理攻擊鍵
+  // 每幀：處理攻擊鍵（手機的「攻擊」鍵、鍵盤按住 M = 左鍵技能；鍵盤按住空白鍵 = 右鍵技能），都自動瞄準最近的敵人
   function update() {
     if (!P || P.dead || G.paused || G.state !== 'play') return;
-    if (!atkHeld && !(G.held && G.held.space)) return;
+    const held = G.held || {};
+    if (held.space) {
+      const t = aim();
+      if (t.e) P.face = Math.atan2(t.y - P.y, t.x - P.x);
+      useSkill(P.rightSkill, t, true);
+    }
+    if (!atkHeld && !held.m) return;
     const t = aim();
     if (t.e) {
       if (inReach(validSkill(P.leftSkill), t.e)) {

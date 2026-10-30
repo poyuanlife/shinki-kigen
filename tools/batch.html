@@ -617,7 +617,7 @@ const ANIM_MS = { walk: 120, idle: 260, run: 85, attack: 60, hit: 60, dead: 160 
 function spriteJson(res, s) {
   const ol = s.outline === 'outer' ? 1 : 0, anims = {};
   for (const a of res.actions) anims[a.id] = { file: a.name + '.png', w: a.W, h: a.H, frames: a.N, ox: a.W / 2, oy: a.H - ol, ms: ANIM_MS[a.id] || 150 };
-  const j = { version: 1, tool: '圖片批次轉換', dirs: ['down', 'up', 'left', 'right'], cell: [res.W, res.H], weapon: res.weaponKind || null, anims };
+  const j = { version: 1, tool: '圖片批次轉換', dirs: ['down', 'up', 'left', 'right', 'downleft', 'downright', 'upleft', 'upright'].slice(0, res.cols || 4), cell: [res.W, res.H], weapon: res.weaponKind || null, anims };
   if (res.projectile) j.projectile = { file: 'Arrow.png', w: res.projectile.width, h: res.projectile.height }; // 射出去的箭（箭頭朝右）
   return JSON.stringify(j, null, 2);
 }

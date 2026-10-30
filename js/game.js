@@ -105,48 +105,80 @@ function genMap() {
   const inCamp = (x, y, r) => inCampDist(x + 0.5, y + 0.5) < r;
   const addDeco = (x, y, type) => { if (x < 0 || y < 0 || x >= MAP || y >= MAP) return; const i = idx(x, y); (M.deco[i] || (M.deco[i] = [])).push(type); };
 
-  // 道路
+  // 道路：先決定路線，遺跡會避開，路就不會被牆截斷
   const hRoads = [], vRoads = [];
   for (let k = 8; k < MAP - 8; k += ri(14, 19)) hRoads.push(k);
   for (let k = 9; k < MAP - 8; k += ri(14, 19)) vRoads.push(k);
-  const paveRoads = () => {
-    const pave = (x, y) => { const i = idx(x, y); if (M.floor[i] === 0 && M.tile[i] === 0) M.floor[i] = 1; };
-    for (const k of hRoads) for (let x = 0; x < MAP; x++) for (let w = 0; w < 3; w++) pave(x, k + w);
-    for (const k of vRoads) for (let y = 0; y < MAP; y++) for (let w = 0; w < 3; w++) pave(k + w, y);
-  };
+  const road = new Uint8Array(N);
+  for (const k of hRoads) for (let x = 0; x < MAP; x++) for (let w = 0; w < 3; w++) road[idx(x, k + w)] = 1;
+  for (const k of vRoads) for (let y = 0; y < MAP; y++) for (let w = 0; w < 3; w++) road[idx(k + w, y)] = 1;
+  const pave = (x, y) => { const i = idx(x, y); if (M.floor[i] === 0 && M.tile[i] === 0) { M.floor[i] = 1; road[i] = 1; } };
 
-  // 古代遺跡（石板地 + 岩壁）
+  // 古代遺跡（石板地 + 岩壁）：一個門朝向最近的道路，另外鋪小徑接過去
+  const ruins = [], links = [];
   for (let k = 0; k < Zg.buildings; k++) {
     const w = ri(5, 11), h = ri(5, 10), x0 = ri(3, MAP - w - 4), y0 = ri(3, MAP - h - 4);
     let ok = true;
     for (let y = y0 - 1; y <= y0 + h && ok; y++) for (let x = x0 - 1; x <= x0 + w; x++) {
       const i = idx(x, y);
-      if (M.floor[i] === 2 || M.tile[i] !== 0 || inCamp(x, y, 11)) { ok = false; break; }
+      if (M.floor[i] === 2 || M.tile[i] !== 0 || road[i] || inCamp(x, y, 11)) { ok = false; break; }
     }
     if (!ok) continue;
     for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) M.floor[idx(x, y)] = 2;
     const baseH = ri(1, 4);
     const doors = new Set();
-    const sides = [0, 1, 2, 3].sort(() => R() - 0.5).slice(0, 2);
+    // 最近的道路在哪一邊（0 上 1 下 2 左 3 右）
+    let near = -1, nd = 1e9;
+    for (const r of hRoads) { const d = r + 2 < y0 ? y0 - r - 2 : r - (y0 + h - 1); if (d > 0 && d < nd) { nd = d; near = r + 2 < y0 ? 0 : 1; } }
+    for (const r of vRoads) { const d = r + 2 < x0 ? x0 - r - 2 : r - (x0 + w - 1); if (d > 0 && d < nd) { nd = d; near = r + 2 < x0 ? 2 : 3; } }
+    const others = [0, 1, 2, 3].filter(s => s !== near).sort(() => R() - 0.5);
+    const sides = near >= 0 ? [near, others[0]] : others.slice(0, 2);
     for (const sd of sides) {
-      if (sd < 2) { const yy = sd === 0 ? y0 : y0 + h - 1, xx = x0 + ri(1, w - 3); doors.add(idx(xx, yy)); doors.add(idx(xx + 1, yy)); }
-      else { const xx = sd === 2 ? x0 : x0 + w - 1, yy = y0 + ri(1, h - 3); doors.add(idx(xx, yy)); doors.add(idx(xx, yy + 1)); }
+      let dx = 0, dy = 0, ax, ay, bx, by;
+      if (sd < 2) { const yy = sd === 0 ? y0 : y0 + h - 1, xx = x0 + ri(1, w - 3); ax = xx; ay = yy; bx = xx + 1; by = yy; dy = sd === 0 ? -1 : 1; }
+      else { const xx = sd === 2 ? x0 : x0 + w - 1, yy = y0 + ri(1, h - 3); ax = xx; ay = yy; bx = xx; by = yy + 1; dx = sd === 2 ? -1 : 1; }
+      doors.add(idx(ax, ay)); doors.add(idx(bx, by));
+      if (sd === near && nd <= 9) links.push([ax, ay, bx, by, dx, dy]);
     }
-    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) {
-      const edge = x === x0 || y === y0 || x === x0 + w - 1 || y === y0 + h - 1;
-      if (!edge) {   // 內部：竹林之類的區域會長滿（fill），其他區域偶爾有碎石
-        if (Zg.fill && R() < Zg.fill) M.tile[idx(x, y)] = 1;
-        else if (R() < 0.12) addDeco(x, y, 'stone');
-        continue;
-      }
+    // 牆的缺口至少兩格寬，不會出現只能擠過去的細縫
+    const ring = [];
+    for (let x = x0; x < x0 + w; x++) ring.push([x, y0]);
+    for (let y = y0 + 1; y < y0 + h; y++) ring.push([x0 + w - 1, y]);
+    for (let x = x0 + w - 2; x >= x0; x--) ring.push([x, y0 + h - 1]);
+    for (let y = y0 + h - 2; y > y0; y--) ring.push([x0, y]);
+    const gaps = new Set();
+    for (let j = 0; j < ring.length; j++) {
+      if (R() < Zg.gap * 0.35) { const n = ri(2, 3); for (let q = 0; q < n; q++) gaps.add((j + q) % ring.length); j += n + 1; }
+    }
+    ring.forEach(([x, y], j) => {
       const i = idx(x, y);
-      if (doors.has(i)) continue;
-      if (R() < Zg.gap) { addDeco(x, y, 'stone'); continue; }
+      if (doors.has(i)) return;
+      if (gaps.has(j)) { addDeco(x, y, 'stone'); return; }
       const corner = (x === x0 || x === x0 + w - 1) && (y === y0 || y === y0 + h - 1);
       M.tile[i] = 1; M.wallH[i] = clamp(baseH * 16 + ri(-12, 14) + (corner ? 18 : 0), 8, 90);
+    });
+    for (let y = y0 + 1; y < y0 + h - 1; y++) for (let x = x0 + 1; x < x0 + w - 1; x++) {
+      // 內部：竹林之類的區域會長滿（fill），其他區域偶爾有碎石；門內一格保持空的
+      const byDoor = doors.has(idx(x - 1, y)) || doors.has(idx(x + 1, y)) || doors.has(idx(x, y - 1)) || doors.has(idx(x, y + 1));
+      if (Zg.fill && !byDoor && R() < Zg.fill) M.tile[idx(x, y)] = 1;
+      else if (R() < 0.12) addDeco(x, y, 'stone');
     }
+    ruins.push({ x0, y0, w, h, doors });
   }
-  paveRoads();
+  for (const k of hRoads) for (let x = 0; x < MAP; x++) for (let w = 0; w < 3; w++) pave(x, k + w);
+  for (const k of vRoads) for (let y = 0; y < MAP; y++) for (let w = 0; w < 3; w++) pave(k + w, y);
+  // 門口到道路的小徑
+  for (const [ax, ay, bx, by, dx, dy] of links) {
+    const tiles = [];
+    let hit = false;
+    for (let s = 1; s <= 10 && !hit; s++) {
+      for (const [x, y] of [[ax + dx * s, ay + dy * s], [bx + dx * s, by + dy * s]]) {
+        const i = idx(x, y);
+        if (M.floor[i] === 1) hit = true; else if (M.tile[i] === 0 && M.floor[i] === 0) tiles.push([x, y]); else { tiles.length = 0; s = 99; break; }
+      }
+    }
+    if (hit) for (const [x, y] of tiles) pave(x, y);
+  }
   // 水池
   for (let k = 0; k < Zg.pools; k++) {
     const cx = ri(6, MAP - 7), cy = ri(6, MAP - 7);
@@ -200,24 +232,76 @@ function genMap() {
     if (!M.block[idx(x, y)]) addProp('sandbag', x, y, true);
   }
   for (const [sx, sy] of shrineSpots) addProp('shrine', sx, sy, true, { name: '地藏菩薩' });
-  const scatter = (type, count, blk, cond) => {
-    for (let k = 0, n = 0; k < count * 20 && n < count; k++) {
-      const x = ri(3, MAP - 4), y = ri(3, MAP - 4);
-      if (free(x, y) && (!cond || cond(x, y))) { addProp(type, x, y, blk); n++; }
+  // 擋路物件成群擺：一群內部緊密相連，群和其他障礙物之間至少空兩格，路面與路邊一格內不放
+  const grp = new Int32Array(N);
+  let gid = 0;
+  const near = (x, y, r, test) => {
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= MAP || yy >= MAP) return true;
+      if (test(idx(xx, yy))) return true;
+    }
+    return false;
+  };
+  const okTile = (x, y, g) => free(x, y) && M.floor[idx(x, y)] === 0 &&
+    !near(x, y, 1, j => road[j] || M.floor[j] === 2 || M.floor[j] === 3) &&
+    !near(x, y, 2, j => M.block[j] && grp[j] !== g);
+  const cluster = (type, total, rMin, rMax) => {
+    for (let k = 0, n = 0; k < 400 && n < total; k++) {
+      const cx0 = ri(4, MAP - 5), cy0 = ri(4, MAP - 5), r = rMin + R() * (rMax - rMin), g = ++gid;
+      const tiles = [];
+      const rr = Math.ceil(r + 0.5);
+      for (let y = cy0 - rr; y <= cy0 + rr; y++) for (let x = cx0 - rr; x <= cx0 + rr; x++) {
+        if (x < 0 || y < 0 || x >= MAP || y >= MAP) continue;
+        if (Math.hypot(x - cx0, y - cy0) < r + (M.seed[idx(x, y)] - 0.5) * 0.7 || (x === cx0 && y === cy0)) tiles.push([x, y]);
+      }
+      if (!tiles.every(([x, y]) => okTile(x, y, g))) continue;   // 整群放得下才放，避免群內出現縫
+      for (const [x, y] of tiles) { addProp(type, x, y, true); grp[idx(x, y)] = g; }
+      n += tiles.length;
     }
   };
-  scatter('barrel', Zg.fires, true);
-  scatter('crate', Zg.crates, true);
-  scatter('tree', Zg.obst, true, (x, y) => M.floor[idx(x, y)] === 0);
-  scatter('lamp', Zg.signs, true, (x, y) => M.floor[idx(x, y)] === 1);
-  scatter('grave', Zg.rocks, true, (x, y) => M.floor[idx(x, y)] !== 1);
+  cluster('tree', Math.round(Zg.obst * 1.6), 0.9, 2.3);
+  cluster('grave', Zg.rocks, 0.4, 1.3);
+  // 箱子：堆在遺跡內側的牆角
+  let crates = 0;
+  for (const rn of ruins.sort(() => R() - 0.5)) {
+    if (crates >= Zg.crates) break;
+    const { x0, y0, w, h } = rn;
+    const corners = [[x0 + 1, y0 + 1, 1, 1], [x0 + w - 2, y0 + 1, -1, 1], [x0 + 1, y0 + h - 2, 1, -1], [x0 + w - 2, y0 + h - 2, -1, -1]];
+    const [x, y, sx, sy] = corners[ri(0, 3)];
+    // 牆角兩側都要是牆，箱子才是靠牆放，不會擋在通道中間
+    if (M.tile[idx(x - sx, y)] !== 1 || M.tile[idx(x, y - sy)] !== 1 || M.tile[idx(x, y)] !== 0 || M.block[idx(x, y)]) continue;
+    if (near(x, y, 1, j => rn.doors.has(j))) continue;
+    addProp('crate', x, y, true); crates++;
+    if (R() < 0.5 && M.tile[idx(x + sx, y - sy)] === 1 && !M.block[idx(x + sx, y)] && !near(x + sx, y, 1, j => rn.doors.has(j))) { addProp('crate', x + sx, y, true); crates++; }
+  }
+  // 石燈籠：放在十字路口的路邊角落，不擋路
+  let lamps = 0;
+  const cross = [];
+  for (const hy of hRoads) for (const vx of vRoads) cross.push([vx, hy]);
+  for (const [vx, hy] of cross.sort(() => R() - 0.5)) {
+    if (lamps >= Zg.signs) break;
+    const spots = [[vx - 1, hy - 1], [vx + 3, hy - 1], [vx - 1, hy + 3], [vx + 3, hy + 3]].sort(() => R() - 0.5).slice(0, 2);
+    for (const [x, y] of spots) {
+      if (free(x, y) && !road[idx(x, y)] && !near(x, y, 1, j => M.block[j])) { addProp('lamp', x, y, true); lamps++; }
+    }
+  }
   for (let k = 0; k < 1400; k++) {
     const x = ri(2, MAP - 3), y = ri(2, MAP - 3), i = idx(x, y);
     if (M.tile[i] !== 0 || inCamp(x, y, 9) || M.deco[i]) continue;
+    if (road[i] && R() < 0.85) continue;   // 路面保持乾淨
     addDeco(x, y, M.floor[i] === 0 ? (R() < 0.93 ? 'plant' : 'bones') : (R() < 0.6 ? 'stone' : 'bones'));
   }
+  // 從營地走不到的封閉小空間（例如竹林遺跡內部）直接填滿，怪物和掉落物不會卡在裡面
+  const seen = new Uint8Array(N), st = [idx(Math.floor(CAMP.x), Math.floor(CAMP.y) + 3)];
+  seen[st[0]] = 1;
+  while (st.length) {
+    const i = st.pop(), x = i % MAP, y = (i / MAP) | 0;
+    for (const j of [i + 1, i - 1, i + MAP, i - MAP]) if (!seen[j] && !blocked(j % MAP, (j / MAP) | 0) && Math.abs((j % MAP) - x) <= 1) { seen[j] = 1; st.push(j); }
+  }
+  for (let i = 0; i < N; i++) if (!M.block[i] && !seen[i]) { M.tile[i] = 1; M.block[i] = 1; M.solid[i] = 1; M.deco[i] = undefined; }
 
-  G.lights = G.props.filter(p => p.type === 'barrel' || p.type === 'campfire' || p.type === 'shrine' || p.type === 'portal');
+  G.lights = G.props.filter(p => p.type === 'campfire' || p.type === 'shrine' || p.type === 'portal');
   buildMinimapBase();
   G.mapReady = true;
 }
@@ -250,6 +334,21 @@ function moveBy(e, dx, dy, avoidCamp) {
   if (dx && canStand(e.x + dx, e.y, e.r) && okC(e.x + dx, e.y)) { e.x += dx; moved = true; }
   if (dy && canStand(e.x, e.y + dy, e.r) && okC(e.x, e.y + dy)) { e.y += dy; moved = true; }
   return moved;
+}
+// 搖桿／鍵盤移動：正面撞到障礙物時，試著往左右偏一點繞過去，不會卡死在物件前面
+function steerMove(e, jx, jy, step) {
+  const ox = e.x, oy = e.y;
+  moveBy(e, jx * step, jy * step);
+  if (Math.hypot(e.x - ox, e.y - oy) > step * 0.6) return;
+  const base = Math.atan2(jy, jx);
+  for (const da of [0.6, -0.6, 1.1, -1.1]) {
+    e.x = ox; e.y = oy;
+    const a = base + da;
+    moveBy(e, Math.cos(a) * step, Math.sin(a) * step);
+    if (Math.hypot(e.x - ox, e.y - oy) > step * 0.5) return;
+  }
+  e.x = ox; e.y = oy;
+  moveBy(e, jx * step, jy * step);
 }
 function shotClear(ax, ay, bx, by) {
   const d = Math.hypot(bx - ax, by - ay), n = Math.ceil(d / 0.25);
@@ -427,7 +526,7 @@ function fireBullet(src, ang, mult, opt = {}) {
     mult: mult * P.st.bulletMult, pierce: opt.pierce !== undefined ? opt.pierce : P.st.pierce,
     hit: new Set(), color: opt.color || '#ffe9a0', w: opt.w || 1.6, kind: opt.kind || (src === P && playerShotKind()), home: opt.home, sp,
   });
-  if (src === P) { P.muzzle = 0.06; P.act = { n: 'shoot', t: 0, dur: clamp(1 / P.st.aps, 0.15, 0.4) }; Snd.play(opt.kind === 'blade' ? 'slash' : 'throw'); }
+  if (src === P) { P.muzzle = 0.06; if (!G.releasing) P.act = { n: 'shoot', t: 0, dur: clamp(1 / P.st.aps, 0.15, 0.4) }; Snd.play(opt.kind === 'blade' ? 'slash' : 'throw'); }
 }
 // 近戰揮砍：以玩家為中心、朝 ang 的扇形（arc = 角度寬，2π = 一整圈），reach = 距離
 function meleeSwing(ang, mult, arc, reach, color = '255,255,255', quiet = false) {
@@ -445,7 +544,7 @@ function meleeSwing(ang, mult, arc, reach, color = '255,255,255', quiet = false)
     hitEnemy(e, mult * P.st.meleeMult); n++;
   }
   G.fx.push({ type: 'slash', x: P.x, y: P.y, ang, arc, r: reach, t: 0, dur: 0.2, color });
-  if (!quiet) { P.act = { n: 'shoot', t: 0, dur: clamp(1 / P.st.aps, 0.15, 0.35) }; Snd.play('slash'); }
+  if (!quiet) { if (!G.releasing) P.act = { n: 'shoot', t: 0, dur: clamp(1 / P.st.aps, 0.15, 0.35) }; Snd.play('slash'); }
   if (n >= 3) G.shake = Math.max(G.shake, 2);
   return n;
 }
@@ -453,22 +552,33 @@ function meleeSwing(ang, mult, arc, reach, color = '255,255,255', quiet = false)
 const attackReach = id => (SKILLS[id] && SKILLS[id].reach) || P.st.range;
 const inReach = (id, e) => dist(P, e) <= attackReach(id) + (P.st.melee && !(SKILLS[id] && SKILLS[id].reach) ? e.r - 0.15 : -0.3);
 
+// 普通攻擊在動畫播到這個比例時才出手（箭離弦、刀砍到）
+const ATK_RELEASE = 0.5;
 function basicAttack(tx, ty) {
   const ang = Math.atan2(ty - P.y, tx - P.x);
   P.face = ang;
   const w = P.equip.weapon;
-  if (P.st.melee) {
-    meleeSwing(ang, 1, w && w.wkey === 'naginata' ? 1.2 : w && w.wkey === 'odachi' ? 2.4 : 1.9, P.st.range);
-  } else if (P.cls === 'onmyoji') {
-    // 符咒：會轉彎追蹤附近的敵人
-    fireBullet(P, ang + rand(-0.05, 0.05), 1, { kind: 'fuda', home: true, speed: 12, color: w && w.wkey === 'shakujo' ? '#c9a6ff' : '#ff8aa8' });
-  } else if (w && w.wkey === 'shotgun') {
-    for (let i = 0; i < 4; i++) fireBullet(P, ang + (i - 1.5) * 0.12, 0.4, { speed: rand(14, 17), color: '#ffb060' });
-  } else if (w && w.wkey === 'rail') {
-    fireBullet(P, ang, 1, { speed: 26, pierce: 100, color: '#9ff', w: 4 });
-  } else {
-    fireBullet(P, ang + rand(-0.03, 0.03), 1);
-  }
+  const release = () => {
+    if (P.st.melee) {
+      meleeSwing(ang, 1, w && w.wkey === 'naginata' ? 1.2 : w && w.wkey === 'odachi' ? 2.4 : 1.9, P.st.range);
+    } else if (P.cls === 'onmyoji') {
+      // 符咒：會轉彎追蹤附近的敵人
+      fireBullet(P, ang + rand(-0.05, 0.05), 1, { kind: 'fuda', home: true, speed: 12, color: w && w.wkey === 'shakujo' ? '#c9a6ff' : '#ff8aa8' });
+    } else if (w && w.wkey === 'shotgun') {
+      for (let i = 0; i < 4; i++) fireBullet(P, ang + (i - 1.5) * 0.12, 0.4, { speed: rand(14, 17), color: '#ffb060' });
+    } else if (w && w.wkey === 'rail') {
+      fireBullet(P, ang, 1, { speed: 26, pierce: 100, color: '#9ff', w: 4 });
+    } else {
+      fireBullet(P, ang + rand(-0.03, 0.03), 1);
+    }
+  };
+  // 攻擊時站定。連續攻擊時跳過預備動作（從舉弓／舉刀那格接著播），動畫不會一直從頭重播
+  const dur = clamp(1 / P.st.aps, 0.15, 0.4);
+  const since = G.t - (G.lastAtk !== undefined ? G.lastAtk : -9);
+  const p0 = since >= 0 && since < dur + 0.15 ? 0.3 : 0;
+  G.lastAtk = G.t;
+  P.act = { n: 'shoot', t: 0, dur, p0, stand: true };
+  P.relT = dur * (ATK_RELEASE - p0) / (1 - p0); P.relFn = release;
   P.atkCd = 1 / P.st.aps;
 }
 
@@ -692,7 +802,7 @@ function hurtPlayer(raw, lvl) {
     if (p.shield <= 0) delete p.buffs.shield;
   }
   if (d <= 0) return;
-  p.hp -= d; p.hurt = 0.12;
+  p.hp -= d; p.hurt = 0.12; p.redT = RED_T;
   Snd.play('hurt');
   floatText(p.x, p.y, '-' + d, '#ff5a5a', 14);
   if (p.hp <= 0) die();
@@ -1060,6 +1170,7 @@ function updateFx(dt) {
 
   for (const p of G.parts) {
     p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; p.vz -= p.g * dt;
+    if (p.puff) { p.vx *= 1 - dt * 3; p.vy *= 1 - dt * 3; }   // 塵土慢慢停下來
     if (p.z < 0) { p.z = 0; p.vz *= -0.3; p.vx *= 0.5; p.vy *= 0.5; }
   }
   G.parts = G.parts.filter(p => p.life > 0);
@@ -1158,6 +1269,29 @@ function updateAllies(dt) {
 // =====================================================
 //  主更新
 // =====================================================
+// 走路動畫依實際走的距離推進：腳步跟地面對得上，不會滑步；撞牆沒前進時腳也不會空轉
+// 受傷時角色閃紅的時間（秒）
+const RED_T = 0.3;
+const STRIDE = { walk: 2.0, run: 2.6 };   // 一個完整循環（左右腳各一步）前進幾格
+function stepAnim(p, moved, dx, dy) {
+  const sp = SPEC[heroSpec(p)], run = p.running && sp.anims.run;
+  const a = run || sp.anims.walk;
+  const before = Math.floor(p.runT * 1000 / a.ms / (a.n / 2));   // 第幾步（一個循環兩步）
+  p.runT += moved / (run ? STRIDE.run : STRIDE.walk) * a.n * a.ms / 1000;
+  // 跑步時每踩一步，腳後跟揚起一小團塵土
+  if (p.running && moved > 0 && Math.floor(p.runT * 1000 / a.ms / (a.n / 2)) !== before) dustPuff(p.x, p.y, dx / moved, dy / moved);
+}
+// 塵土顏色跟著地面
+const DUST_COLOR = { field: '205,185,140', bamboo: '170,170,120', desert: '230,190,130', snow: '240,245,255', dungeon: '150,140,130', castle: '150,110,100' };
+function dustPuff(x, y, fx, fy) {
+  const col = DUST_COLOR[G.zone] || DUST_COLOR.field;
+  for (let i = 0; i < 3 && G.parts.length < 700; i++) {
+    const side = rand(-0.5, 0.5);
+    G.parts.push({ puff: true, x: x - fx * 0.25 - fy * side * 0.3, y: y - fy * 0.25 + fx * side * 0.3, z: rand(1, 4),
+      vx: -fx * rand(0.3, 0.8) + rand(-0.2, 0.2), vy: -fy * rand(0.3, 0.8) + rand(-0.2, 0.2), vz: rand(4, 12),
+      life: rand(0.4, 0.6), max: 0.6, color: col, size: rand(4.5, 7), g: 0 });
+  }
+}
 function updatePlayer(dt) {
   const p = P;
   for (const k in p.buffs) { p.buffs[k] -= dt; if (p.buffs[k] <= 0) { delete p.buffs[k]; if (k === 'shield') p.shield = 0; } }
@@ -1165,10 +1299,14 @@ function updatePlayer(dt) {
   p.st = calcStats(p);
   const s = p.st;
   if (p.act) { p.act.t += dt; if (p.act.t >= p.act.dur) p.act = null; }
-  if (p.dead) { p.deadT += dt; return; }
+  if (p.dead) { p.deadT += dt; p.relFn = null; return; }
+  if (p.relFn) {
+    p.relT -= dt;
+    if (p.relT <= 0) { const f = p.relFn; p.relFn = null; G.releasing = true; try { f(); } finally { G.releasing = false; } }
+  }
   p.hp = Math.min(s.maxHp, p.hp + s.hpReg * dt);
   p.mp = Math.min(s.maxMp, p.mp + s.mpReg * dt);
-  p.atkCd -= dt; p.muzzle -= dt; p.hurt -= dt;
+  p.atkCd -= dt; p.muzzle -= dt; p.hurt -= dt; if (p.redT > 0) p.redT -= dt;
 
   for (let i = p.shotQ.length - 1; i >= 0; i--) {
     const q = p.shotQ[i]; q.t -= dt;
@@ -1178,7 +1316,7 @@ function updatePlayer(dt) {
     p.gatT -= dt;
     while (p.gatT <= 0) {
       p.gatT += 1 / 15;
-      const m = TOUCH ? TouchUI.aim() : mouseWorld(), ang = Math.atan2(m.y - p.y, m.x - p.x);
+      const m = TOUCH || (G.held && (G.held.space || G.held.m)) ? TouchUI.aim() : mouseWorld(), ang = Math.atan2(m.y - p.y, m.x - p.x);
       p.face = ang;
       fireBullet(p, ang + rand(-0.09, 0.09), (55 + s.lv('gatling') * 6) / 100);
     }
@@ -1240,23 +1378,29 @@ function updatePlayer(dt) {
   // 跑步（R 鍵／手機「跑」鍵切換）：速度 ×1.5，播跑步動畫（沒有跑步圖的角色用快一點的走路）
   const runMul = G.runOn ? RUN_MUL : 1;
   p.running = G.runOn && (!!moveIn || p.path.length > 0);
-  if (moveIn) {
+  const startT = p.moving < 0.05;   // 從站著開始走：從第一步播起
+  const ox = p.x, oy = p.y;
+  if (p.act && p.act.stand) {   // 攻擊中站定，攻擊完才繼續走
+    p.moving = 0; p.running = false;
+  } else if (moveIn) {
     p.path = []; p.goal = null; p.target = null;
     const step = s.moveSpeed * runMul * dt * Math.min(1, moveIn.mag * 1.25);
     const [jx, jy] = screenToWorldDir(moveIn.x, moveIn.y);
-    moveBy(p, jx * step, jy * step);
+    if (startT) p.runT = 0;
+    steerMove(p, jx, jy, step);
     if (!(p.buffs.gatling > 0) && !(p.act && p.act.n === 'shoot')) p.face = Math.atan2(jy, jx);
     p.moving = Math.min(1, p.moving + dt * 8);
     p.walk += dt * 11 * (s.moveSpeed * runMul / 4);
-    p.runT += dt * (s.moveSpeed * runMul / 4);
+    stepAnim(p, Math.hypot(p.x - ox, p.y - oy), p.x - ox, p.y - oy);
   } else if (p.path.length) {
+    if (startT) p.runT = 0;
     const t = p.path[0], dx = t.x - p.x, dy = t.y - p.y, d = Math.hypot(dx, dy), step = s.moveSpeed * runMul * dt;
     if (d <= step) { moveBy(p, dx, dy); p.path.shift(); }
     else if (!moveBy(p, dx / d * step, dy / d * step)) p.path = [];
     if (!(p.buffs.gatling > 0)) p.face = Math.atan2(dy, dx);
     p.moving = Math.min(1, p.moving + dt * 8);
     p.walk += dt * 11 * (s.moveSpeed * runMul / 4);
-    p.runT += dt * (s.moveSpeed * runMul / 4);
+    stepAnim(p, Math.hypot(p.x - ox, p.y - oy), p.x - ox, p.y - oy);
   } else p.moving = Math.max(0, p.moving - dt * 8);
 
   // 自動拾取金幣與藥劑
@@ -1576,6 +1720,12 @@ function render() {
   // 粒子
   for (const p of G.parts) {
     const s = toScreen(p.x, p.y);
+    if (p.puff) {   // 塵土：慢慢變大、變淡的小圓團
+      const k = 1 - p.life / p.max, r = p.size * (1 + k * 1.6);
+      ctx.globalAlpha = 1; ctx.fillStyle = `rgba(${p.color},${0.7 * (1 - k * k)})`;
+      ell(ctx, s.x, s.y - p.z, r, r * 0.65); ctx.fill();
+      continue;
+    }
     ctx.globalAlpha = Math.min(1, p.life / 0.3);
     ctx.fillStyle = p.color; ctx.fillRect(s.x - p.size / 2, s.y - p.z - p.size / 2, p.size, p.size);
   }
@@ -2348,7 +2498,8 @@ addEventListener('keydown', safe(e => {
   const k = keyName(e);
   if (G.paused && k !== 'escape') return;   // 選單開著（暫停）時只接受 Esc
   if (skillPickKey(k)) { e.preventDefault(); return; }   // 技能清單開著：數字鍵 = 設定快捷鍵
-  if (MOVE_KEYS[k] || k === 'space') { e.preventDefault(); G.held[k] = true; return; }
+  // 按住類：移動鍵、空白鍵（右鍵技能）、M（左鍵技能）
+  if (MOVE_KEYS[k] || k === 'space' || k === 'm') { e.preventDefault(); G.held[k] = true; return; }
   if (e.key === 'Tab') { e.preventDefault(); G.showMini = !G.showMini; mm.classList.toggle('hidden', !G.showMini); return; }
   if (e.key === 'F3') { e.preventDefault(); G.showFps = !G.showFps; return; }
   if (e.key === 'F4') { e.preventDefault(); cycleQuality(); return; }
@@ -2366,7 +2517,6 @@ addEventListener('keydown', safe(e => {
     case 'k': togglePanel('skill'); break;
     case 't': returnToCamp(); break;
     case 'r': if (!e.repeat) toggleRun(); break;
-    case 'm': G.showMini = !G.showMini; mm.classList.toggle('hidden', !G.showMini); break;
     case 'escape': {
       if (typeof PhotoHero !== 'undefined' && PhotoHero.isOpen()) { PhotoHero.close(); break; }
       if (isMenuOpen()) { closeMenu(); break; }
@@ -2532,7 +2682,7 @@ async function startGame(p) {
   document.querySelectorAll('.ingame').forEach(e => e.classList.remove('hidden'));
   renderHotbar();
   addLog(`歡迎來到${curZone().name}。`, '#ffd98a');
-  addLog(TOUCH ? '左下搖桿移動，按住「攻擊」自動攻擊；長按攻擊鍵或技能鍵可以換技能。' : 'WASD 或左鍵移動，空白鍵 / 左鍵用左鍵技能，右鍵用右鍵技能；點快捷列兩側的格子可以換技能。', '#ccc');
+  addLog(TOUCH ? '左下搖桿移動，按住「攻擊」自動攻擊；長按攻擊鍵或技能鍵可以換技能。' : 'WASD 或左鍵移動；左鍵技能：滑鼠左鍵或按住 M，右鍵技能：滑鼠右鍵或按住空白鍵（鍵盤會自動瞄準最近的敵人）；點快捷列兩側的格子可以換技能。', '#ccc');
   saveGame();
 }
 // 標題畫面：點角色卡選職業，每個職業各有自己的存檔
@@ -2676,9 +2826,9 @@ if (location.hash.startsWith('#play')) {
       for (let y = 22; y < 40; y++) for (let x = 22; x < 40; x++) { M.block[idx(x, y)] = 0; M.solid[idx(x, y)] = 0; }
       G.enemies = G.enemies.slice(0, 2); for (const e of G.enemies) { e.x = P.x + 3; e.y = P.y + 1; e.hp = e.maxHp = 1e9; }
       let basic = 0; const ba = basicAttack; basicAttack = (...q) => { basic++; return ba(...q); };
-      G.held.space = true;
+      G.held.m = true;
       for (let f = 0; f < 120; f++) { update(1 / 60); render(); }
-      G.held.space = false; basicAttack = ba;
+      G.held.m = false; basicAttack = ba;
       console.log('LEFTCHECK 爆裂符 ' + G.fx.filter(x => x.type === 'grenade' || x.type === 'boom').length + ' 個特效，普通攻擊 ' + basic + ' 次，冷卻 ' + (P.cds.grenade || 0).toFixed(2));
       return;
     }
