@@ -66,6 +66,8 @@ const ZONES = [
     desc: '綠意盎然的平原，旅程的起點。',
     art: {},   // 用 gfx.js 的預設
     light: { a: 0.22, rgb: '10,8,24' }, weather: 'pollen',
+    // 寫實風格（系統選單「畫面風格」）：畫面調色、環境光、霧、天氣
+    mood: { filter: 'saturate(0.62) contrast(1.12) brightness(0.94) sepia(0.2)', light: { a: 0.3, rgb: '24,18,10' }, fog: '205,200,180', fogA: 0.16, weather: 'motes' },
     mm: { grass: [120, 170, 60], path: [170, 110, 70], wall: [40, 90, 40], water: [50, 100, 160], camp: [190, 140, 80] },
     gen: { buildings: 160, fill: 0, gap: 0.22, pools: 12, poolR: 1.6, obst: 70, rocks: 30, fires: 30, crates: 30, signs: 18 },
     monsters: {
@@ -85,6 +87,8 @@ const ZONES = [
       plants: [[T_NATURE, 0, 10], [T_NATURE, 1, 10], [T_NATURE, 4, 10], [T_NATURE, 5, 10], [T_NATURE, 8, 10], [T_NATURE, 9, 10], ...[0, 1, 2, 3, 4, 6].map(c => [T_DETAIL, c, 2])],
     },
     light: { a: 0.32, rgb: '4,24,10' }, weather: 'leaves',
+    // 寫實風格（系統選單「畫面風格」）：畫面調色、環境光、霧、天氣
+    mood: { filter: 'saturate(0.58) contrast(1.14) brightness(0.9) sepia(0.12)', light: { a: 0.4, rgb: '6,20,10' }, fog: '170,195,170', fogA: 0.22 },
     mm: { grass: [70, 130, 50], path: [120, 80, 50], wall: [30, 70, 30], water: [50, 100, 160], camp: [150, 110, 70] },
     gen: { buildings: 220, fill: 0.55, gap: 0.3, pools: 6, poolR: 1.4, obst: 50, rocks: 15, fires: 15, crates: 10, signs: 8 },
     monsters: {
@@ -107,6 +111,8 @@ const ZONES = [
       fence: [[T_DESERT, 6, 11, 1, 1], [T_DESERT, 7, 11, 1, 1], [T_DESERT, 14, 10, 1, 1]],
     },
     light: { a: 0.08, rgb: '50,25,0' }, weather: 'sand',
+    // 寫實風格（系統選單「畫面風格」）：畫面調色、環境光、霧、天氣
+    mood: { filter: 'saturate(0.7) contrast(1.1) brightness(0.95) sepia(0.28)', light: { a: 0.18, rgb: '50,25,0' }, fog: '230,200,150', fogA: 0.14 },
     mm: { grass: [220, 160, 90], path: [240, 200, 150], wall: [150, 90, 50], water: [70, 170, 210], camp: [240, 210, 160] },
     gen: { buildings: 90, fill: 0, gap: 0.45, pools: 5, poolR: 2.4, obst: 60, rocks: 60, fires: 20, crates: 15, signs: 12 },
     monsters: {
@@ -129,6 +135,8 @@ const ZONES = [
       fence: [NT(4, 12), NT(5, 12), NT(10, 12)],
     },
     light: { a: 0.16, rgb: '10,24,60' }, weather: 'snow',
+    // 寫實風格（系統選單「畫面風格」）：畫面調色、環境光、霧、天氣
+    mood: { filter: 'saturate(0.55) contrast(1.1) brightness(0.96) sepia(0.06)', light: { a: 0.24, rgb: '10,24,60' }, fog: '225,235,250', fogA: 0.22 },
     mm: { grass: [225, 230, 240], path: [190, 195, 210], wall: [90, 130, 150], water: [150, 210, 240], camp: [200, 200, 215] },
     gen: { buildings: 110, fill: 0, gap: 0.3, pools: 26, poolR: 2.2, obst: 40, rocks: 50, fires: 25, crates: 12, signs: 10 },
     monsters: {
@@ -151,6 +159,8 @@ const ZONES = [
       fence: [[T_DUNGEON, 8, 3, 1, 1], [T_DUNGEON, 7, 3, 1, 1]],
     },
     light: { a: 0.6, rgb: '4,4,14' }, weather: 'dust',
+    // 寫實風格（系統選單「畫面風格」）：畫面調色、環境光、霧、天氣
+    mood: { filter: 'saturate(0.55) contrast(1.16) brightness(0.92) sepia(0.15)', light: { a: 0.66, rgb: '6,4,10' }, fog: '120,115,130', fogA: 0.16 },
     mm: { grass: [130, 115, 100], path: [90, 70, 55], wall: [70, 75, 80], water: [140, 70, 160], camp: [170, 140, 100] },
     gen: { buildings: 260, fill: 0, gap: 0.12, pools: 8, poolR: 1.4, obst: 50, rocks: 30, fires: 40, crates: 20, signs: 0 },
     monsters: {
@@ -173,6 +183,8 @@ const ZONES = [
       fence: [[T_DUNGEON, 8, 3, 1, 1], [T_DUNGEON, 3, 3, 1, 1], [T_DUNGEON, 4, 3, 1, 1]],
     },
     light: { a: 0.45, rgb: '50,0,4' }, weather: 'embers',
+    // 寫實風格（系統選單「畫面風格」）：畫面調色、環境光、霧、天氣
+    mood: { filter: 'saturate(0.68) contrast(1.16) brightness(0.9) sepia(0.2)', light: { a: 0.52, rgb: '40,4,6' }, fog: '140,90,80', fogA: 0.16 },
     mm: { grass: [130, 110, 95], path: [90, 65, 50], wall: [60, 45, 40], water: [140, 60, 150], camp: [170, 120, 90] },
     gen: { buildings: 200, fill: 0, gap: 0.2, pools: 18, poolR: 1.8, obst: 50, rocks: 40, fires: 35, crates: 10, signs: 0 },
     monsters: {

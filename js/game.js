@@ -76,6 +76,39 @@ function toggleRun() {
   if (typeof TouchUI !== 'undefined' && TouchUI.syncRun) TouchUI.syncRun();
 }
 const curZone = () => ZONE_BY_ID[G.zone] || ZONES[0];
+// 畫面風格：兩個預設（寫實／原本）＋細項自訂。記在這台裝置上
+//   grade 寫實程度 0～100（調色、環境光、天氣跟著區域的 mood 設定漸變）、bright 亮度 -30～30、
+//   fog 霧 0～100（50 = 區域預設濃度）、vig 暗角 0～100、shadow 地上影子
+const MOOD_PRESETS = { real: { grade: 100, bright: 0, fog: 50, vig: 62, shadow: true }, orig: { grade: 0, bright: 0, fog: 0, vig: 45, shadow: false } };
+let MOODCFG = (() => {
+  try {
+    const j = JSON.parse(localStorage.getItem('shinki.moodcfg') || 'null');
+    if (j) return Object.assign({}, MOOD_PRESETS.real, j);
+    return Object.assign({}, MOOD_PRESETS[localStorage.getItem('shinki.mood') === 'orig' ? 'orig' : 'real']);   // 舊版只存了「寫實／原本」
+  } catch (e) { return Object.assign({}, MOOD_PRESETS.real); }
+})();
+function setMoodCfg(o) {
+  Object.assign(MOODCFG, o);
+  try { localStorage.setItem('shinki.moodcfg', JSON.stringify(MOODCFG)); } catch (e) { /* 存不了就算了 */ }
+  applyMood();
+}
+// 目前的設定跟哪個預設一樣（都不一樣 = 自訂）
+const moodPresetName = () => Object.keys(MOOD_PRESETS).find(k => Object.keys(MOOD_PRESETS[k]).every(f => MOOD_PRESETS[k][f] === MOODCFG[f])) || 'custom';
+const moodK = () => MOODCFG.grade / 100;
+// 調色用畫布的 CSS 濾鏡（交給顯示卡做，幾乎不花效能）；畫質「低」時只調亮度
+function applyMood() {
+  const m = curZone().mood, key = G.zone + '|' + JSON.stringify(MOODCFG) + '|' + qualityIdx;
+  if (G.moodKey === key) return;
+  G.moodKey = key;
+  const k = qualityIdx < 2 ? moodK() : 0, f = {};
+  if (m && k > 0) for (const [, n, v] of m.filter.matchAll(/(\w+)\(([\d.]+)/g)) f[n] = +v;
+  const mix = (n, base) => base + ((f[n] !== undefined ? f[n] : base) - base) * k;
+  const br = mix('brightness', 1) * (1 + MOODCFG.bright / 100);
+  const parts = [];
+  if (k > 0) parts.push(`saturate(${mix('saturate', 1).toFixed(3)})`, `contrast(${mix('contrast', 1).toFixed(3)})`, `sepia(${mix('sepia', 0).toFixed(3)})`);
+  if (Math.abs(br - 1) > 0.001) parts.push(`brightness(${br.toFixed(3)})`);
+  canvas.style.filter = parts.join(' ');
+}
 
 // =====================================================
 //  地圖
@@ -1636,7 +1669,9 @@ function render() {
   const minY = Math.max(0, Math.floor(Math.min(...cs.map(c => c.y))) - 1), maxY = Math.min(MAP - 1, Math.ceil(Math.max(...cs.map(c => c.y))) + 1);
 
   const draws = [];
+  applyMood();
   drawGround();
+  if (MOODCFG.shadow) drawPropShadows();
   for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
     if (M.tile[idx(x, y)] !== 1) continue;
     const s = toScreen(x, y);
@@ -1730,6 +1765,7 @@ function render() {
     ctx.fillStyle = p.color; ctx.fillRect(s.x - p.size / 2, s.y - p.z - p.size / 2, p.size, p.size);
   }
   ctx.globalAlpha = 1;
+  if (MOODCFG.fog > 0 && qualityIdx < 2 && curZone().mood) drawFog(curZone().mood, MOODCFG.fog / 50);
   prof('fx');
 
   drawLighting(ps);
@@ -1867,13 +1903,62 @@ function drawEffects() {
   }
 }
 
+// 地上物件的影子：光從左上照過來，影子往右下拉長一點
+const SHADOW_R = { tree: 20, grave: 13, crate: 11, lamp: 8, shrine: 16, tent: 30, flag: 7, chest: 10, anvil: 12, barrel: 12, campfire: 14 };
+function drawPropShadows() {
+  ctx.fillStyle = 'rgba(10,8,4,0.3)';
+  for (const p of G.props) {
+    const r = SHADOW_R[p.type]; if (!r) continue;
+    const s = toScreen(p.x, p.y);
+    if (s.x < -60 || s.x > W + 60 || s.y < -30 || s.y > H + 60) continue;
+    ell(ctx, s.x + r * 0.45, s.y + 1, r * 1.15, r * 0.45, 0.18); ctx.fill();
+  }
+}
+// 霧：一張可以無縫拼接的雜訊圖，兩層用不同大小、速度飄動
+const FOG = { tex: null, color: '' };
+function fogTexture(color) {
+  if (FOG.tex && FOG.color === color) return FOG.tex;
+  const N = 96, G0 = 6, cv = document.createElement('canvas'); cv.width = cv.height = N;
+  const c = cv.getContext('2d'), im = c.createImageData(N, N), d = im.data, [r, g, b] = color.split(',').map(Number);
+  const rnd = mulberry32(777), grid = (n) => { const a = []; for (let i = 0; i < n * n; i++) a.push(rnd()); return a; };
+  const oct = [[G0, grid(G0), 0.65], [G0 * 2, grid(G0 * 2), 0.35]];
+  const sm = t => t * t * (3 - 2 * t);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let v = 0;
+    for (const [n, gr, w] of oct) {
+      const fx = x / N * n, fy = y / N * n, x0 = Math.floor(fx), y0 = Math.floor(fy), tx = sm(fx - x0), ty = sm(fy - y0);
+      const at = (i, j) => gr[((j % n) * n) + (i % n)];
+      const a = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx, bb = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+      v += (a + (bb - a) * ty) * w;
+    }
+    const i = (y * N + x) * 4; d[i] = r; d[i + 1] = g; d[i + 2] = b; d[i + 3] = Math.max(0, Math.min(255, (v - 0.3) * 2.2 * 255));
+  }
+  c.putImageData(im, 0, 0);
+  FOG.tex = cv; FOG.color = color; FOG.pat = null;
+  return cv;
+}
+function drawFog(m, mult) {
+  const tex = fogTexture(m.fog);
+  if (!FOG.pat) FOG.pat = ctx.createPattern(tex, 'repeat');
+  ctx.save(); ctx.imageSmoothingEnabled = true; ctx.fillStyle = FOG.pat;
+  for (const [sc, sp, par, a] of [[9, 6, 1, 0.55], [5, 11, 1.25, 0.45]]) {   // 大塊慢的、小塊快的；跟著地面走（鏡頭動時霧也跟著動）
+    const ox = -G.cam.x * par + G.t * sp, oy = -G.cam.y * par + G.t * sp * 0.35;
+    FOG.pat.setTransform(new DOMMatrix().translateSelf(ox, oy).scaleSelf(sc));
+    ctx.globalAlpha = Math.min(1, m.fogA * a * 2 * mult); ctx.fillRect(0, 0, W, H);
+  }
+  ctx.restore();
+}
+
 let vignette = null;
 function drawLighting(ps) {
   const K = LIGHT_RES, lw = lightCv.width, lh = lightCv.height;
   lctx.setTransform(1, 0, 0, 1, 0, 0);
   lctx.globalCompositeOperation = 'source-over';
   lctx.clearRect(0, 0, lw, lh);
-  const ZL = curZone().light;
+  // 環境光：原本的和寫實的之間，依寫實程度漸變
+  const Z = curZone(), k = moodK(), LA = Z.light, LB = (Z.mood && Z.mood.light) || LA;
+  const ca = LA.rgb.split(',').map(Number), cb = LB.rgb.split(',').map(Number);
+  const ZL = { a: LA.a + (LB.a - LA.a) * k, rgb: ca.map((v, i) => Math.round(v + (cb[i] - v) * k)).join(',') };
   lctx.fillStyle = `rgba(${ZL.rgb},${ZL.a})`; lctx.fillRect(0, 0, lw, lh);
   lctx.globalCompositeOperation = 'destination-out';
   lctx.setTransform(K, 0, 0, K, 0, 0);   // 下面用邏輯座標畫，自動縮成低解析度
@@ -1902,11 +1987,12 @@ function drawLighting(ps) {
   for (const b of G.ebullets) { const s = toScreen(b.x, b.y); L(s.x, s.y - 24, 70, 0.5); }
   for (const g of G.ground) if (g.item && g.item.rarity >= 2) { const s = toScreen(g.x, g.y); L(s.x, s.y - 20, 80, 0.5); }
   // 暗角也疊進同一張低解析度圖，最後只要貼一次
-  if (!vignette || vignette.width !== lw || vignette.height !== lh) {
-    vignette = document.createElement('canvas'); vignette.width = lw; vignette.height = lh;
+  const vAmt = MOODCFG.vig / 100, vIn = 0.35 - 0.07 * k;   // 寫實程度越高，暗角從越靠中間開始
+  if (!vignette || vignette.width !== lw || vignette.height !== lh || vignette.amt !== vAmt || vignette.vin !== vIn) {
+    vignette = document.createElement('canvas'); vignette.width = lw; vignette.height = lh; vignette.amt = vAmt; vignette.vin = vIn;
     const vc = vignette.getContext('2d');
-    const v = vc.createRadialGradient(lw / 2, lh / 2, Math.min(lw, lh) * 0.35, lw / 2, lh / 2, Math.max(lw, lh) * 0.75);
-    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.45)');
+    const v = vc.createRadialGradient(lw / 2, lh / 2, Math.min(lw, lh) * vIn, lw / 2, lh / 2, Math.max(lw, lh) * 0.75);
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, `rgba(0,0,0,${vAmt})`);
     vc.fillStyle = v; vc.fillRect(0, 0, lw, lh);
   }
   lctx.setTransform(1, 0, 0, 1, 0, 0); lctx.globalCompositeOperation = 'source-over';
@@ -1932,11 +2018,13 @@ const WEATHER = {
   sand: { n: 60, init: () => ({ vx: rand(40, 80), vy: rand(-4, 4), s: rand(0.6, 1.3) }), color: () => 'rgba(240,200,140,0.45)' },
   snow: { n: 90, init: () => ({ vx: rand(-8, 4), vy: rand(14, 30), s: rand(0.8, 2) }), color: () => 'rgba(255,255,255,0.8)' },
   dust: { n: 25, init: () => ({ vx: rand(-3, 3), vy: rand(-3, 3), s: rand(0.6, 1.2) }), color: a => `rgba(200,200,220,${0.15 + Math.sin(G.t * 2 + a.ph) * 0.1})` },
+  motes: { n: 30, init: () => ({ vx: rand(-4, 4), vy: rand(-5, 1), s: rand(0.6, 1.3) }), color: a => `rgba(255,240,210,${0.18 + Math.sin(G.t * 1.5 + a.ph) * 0.12})` },   // 陽光下飄的灰塵
   embers: { n: 50, init: () => ({ vx: rand(-6, 6), vy: rand(-26, -10), s: rand(0.7, 1.6) }), color: a => `rgba(255,${110 + (a.ph * 20 | 0)},40,${0.5 + Math.sin(G.t * 5 + a.ph) * 0.3})`, glow: true },
 };
 function drawAsh() {
-  const Wd = WEATHER[curZone().weather] || WEATHER.pollen;
-  if (G.ashKind !== curZone().weather) { G.ash = []; G.ashKind = curZone().weather; }
+  const Z = curZone(), kind = (moodK() >= 0.5 && Z.mood && Z.mood.weather) || Z.weather;
+  const Wd = WEATHER[kind] || WEATHER.pollen;
+  if (G.ashKind !== kind) { G.ash = []; G.ashKind = kind; }
   if (G.ash.length < Wd.n) G.ash.push(Object.assign({ x: Math.random() * W, y: Math.random() * H, ph: rand(0, 6) }, Wd.init()));
   ctx.save(); if (Wd.glow) ctx.globalCompositeOperation = 'lighter';
   for (const a of G.ash) {
@@ -2593,6 +2681,7 @@ function renderMenu() {
   $('optMusic').disabled = !c.music; $('optSfx').disabled = !c.sfx;
   document.querySelectorAll('#optQuality button').forEach(b => b.classList.toggle('on', +b.dataset.q === qualityIdx));
   document.querySelectorAll('#optDir button').forEach(b => b.classList.toggle('on', b.dataset.d === DIR_MODE));
+  renderMoodOpts();
   document.querySelectorAll('#optInput button').forEach(b => b.classList.toggle('on', b.dataset.i === INPUT_MODE));
   document.querySelectorAll('#optHotkey button').forEach(b => b.classList.toggle('on', b.dataset.h === HOTKEY_MODE));
   $('saveInfo').textContent = G.testMode ? '（測試模式：不會存檔）' : G.lastSave ? `上次存檔：${fmtTime(G.lastSave)}` : '';
@@ -2615,6 +2704,18 @@ document.querySelectorAll('#optInput button').forEach(b => { b.onclick = () => {
   saveGame();
   location.reload();
 }; });
+// 畫面風格：預設按鈕＋細項滑桿（拖動時畫面馬上跟著變，選單後面看得到）
+const MOOD_SLIDERS = { grade: ['optGrade', v => v], bright: ['optBright', v => (v > 0 ? '+' : '') + v], fog: ['optFog', v => v], vig: ['optVig', v => v] };
+function renderMoodOpts() {
+  const p = moodPresetName();
+  document.querySelectorAll('#optMood button').forEach(b => b.classList.toggle('on', b.dataset.m === p));
+  $('moodTag').textContent = p === 'custom' ? '目前：自訂' : '';
+  for (const [k, [id, fmt]] of Object.entries(MOOD_SLIDERS)) { $(id).value = MOODCFG[k]; $(id + 'Val').textContent = fmt(MOODCFG[k]); }
+  $('optShadow').checked = MOODCFG.shadow;
+}
+document.querySelectorAll('#optMood button').forEach(b => { b.onclick = () => { setMoodCfg(MOOD_PRESETS[b.dataset.m]); renderMoodOpts(); Snd.play('ui'); }; });
+for (const [k, [id]] of Object.entries(MOOD_SLIDERS)) $(id).oninput = e => { setMoodCfg({ [k]: +e.target.value }); renderMoodOpts(); };
+$('optShadow').onchange = e => { setMoodCfg({ shadow: e.target.checked }); renderMoodOpts(); Snd.play('ui'); };
 document.querySelectorAll('#optDir button').forEach(b => { b.onclick = () => { setDirMode(b.dataset.d); P && (P._dir = undefined); for (const e of G.enemies) e._dir = undefined; renderMenu(); Snd.play('ui'); }; });
 $('btnCamp').onclick = () => { closeMenu(); returnToCamp(); };
 $('btnPhoto').onclick = () => { closeMenu(); PhotoHero.open(); };

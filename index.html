@@ -155,6 +155,14 @@
   <div class="setRow"><label><input type="checkbox" id="optSfxOn"> 音效</label><input type="range" id="optSfx" min="0" max="100" step="5"><span class="setVal" id="optSfxVal"></span></div>
   <h3>畫質</h3>
   <div class="setRow" id="optQuality"><button data-q="0">高</button><button data-q="1">中</button><button data-q="2">低</button><span class="dim">畫面不順時調低</span></div>
+  <h3>畫面風格</h3>
+  <div class="setRow" id="optMood"><button data-m="real">寫實</button><button data-m="orig">原本</button><span class="dim" id="moodTag"></span></div>
+  <div class="setRow"><label>寫實程度</label><input type="range" id="optGrade" min="0" max="100" step="5"><span class="setVal" id="optGradeVal"></span></div>
+  <div class="setRow"><label>亮度</label><input type="range" id="optBright" min="-30" max="30" step="5"><span class="setVal" id="optBrightVal"></span></div>
+  <div class="setRow"><label>霧</label><input type="range" id="optFog" min="0" max="100" step="5"><span class="setVal" id="optFogVal"></span></div>
+  <div class="setRow"><label>暗角</label><input type="range" id="optVig" min="0" max="100" step="5"><span class="setVal" id="optVigVal"></span></div>
+  <div class="setRow"><label><input type="checkbox" id="optShadow"> 影子</label><span class="dim">樹、石頭等物件在地上的影子</span></div>
+  <div class="hint">寫實程度：0 是原本的鮮豔色調，100 是偏暗、偏土色的寫實色調。霧 50 是每個區域的預設濃度。畫質「低」時不調色、不顯示霧。</div>
   <h3>快捷鍵 1～8</h3>
   <div class="setRow" id="optHotkey"><button data-h="swap">切換技能（暗黑 2）</button><button data-h="cast">直接施放</button></div>
   <h3>斜向時角色顯示</h3>
