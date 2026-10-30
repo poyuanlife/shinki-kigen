@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><title>Flare 素材轉換</title></head>
+<body>
+<p>這一頁由 build-flare.js 在背景開啟、執行，不用手動打開。</p>
+<script src="flare-config.js"></script>
+<script>
+'use strict';
+// ---------- 讀檔 ----------
+const loadText = p => fetch('/src/' + p).then(r => { if (!r.ok) throw new Error('讀不到 ' + p); return r.text(); });
+const imgCache = {};
+function loadImg(p) {
+  return imgCache[p] || (imgCache[p] = new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error('讀不到圖 ' + p)); im.src = '/src/' + p; }));
+}
+async function save(path, body) {
+  const r = await fetch('/save?p=' + encodeURIComponent(path), { method: 'POST', body });
+  if (!r.ok) throw new Error('存檔失敗 ' + path);
+}
+
+// ---------- 解析 Flare 的設定檔 ----------
+// 圖塊：[tileset] 底下 img=…，tile=編號,x,y,寬,高,錨點x,錨點y
+function parseTileset(text) {
+  const out = {}; let img = null;
+  for (const line of text.split(/\r?\n/)) {
+    if (line.startsWith('img=')) img = line.slice(4).trim();
+    else if (line.startsWith('tile=')) { const v = line.slice(5).split(',').map(Number); out[v[0]] = { img, r: v.slice(1, 7) }; }
+  }
+  return out;
+}
+// 動畫：image=…，[動作] frames、duration、type，frame=第幾幀,方向,x,y,寬,高,錨點x,錨點y
+function parseAnim(text) {
+  const out = { image: null, anims: {} }; let cur = null;
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const sec = line.match(/^\[(\w+)\]$/);
+    if (sec) { cur = out.anims[sec[1]] = { frames: 0, ms: 0, type: 'looped', fr: [] }; continue; }
+    const [k, v] = [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)];
+    if (k === 'image') out.image = v;
+    if (!cur) continue;
+    if (k === 'frames') cur.frames = +v;
+    else if (k === 'duration') cur.ms = parseFloat(v) * (v.endsWith('ms') ? 1 : 1000);
+    else if (k === 'type') cur.type = v;
+    else if (k === 'frame') { const n = v.split(',').map(Number); (cur.fr[n[0]] || (cur.fr[n[0]] = []))[n[1]] = n.slice(2, 8); }
+  }
+  return out;
+}
+
+// ---------- 縮小、去掉空白 ----------
+// 把一塊圖（已經畫好在 canvas 上，錨點在 ax, ay）縮成 scale 倍，去掉四周透明的地方
+function shrink(src, ax, ay, scale, keep) {
+  const w = Math.max(1, Math.round(src.width * scale)), h = Math.max(1, Math.round(src.height * scale));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, w, h);
+  let bx = 0, by = 0, bw = w, bh = h;
+  if (!keep) {   // 找不透明的範圍
+    const d = x.getImageData(0, 0, w, h).data;
+    let x0 = w, y0 = h, x1 = -1, y1 = -1;
+    for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) if (d[(yy * w + xx) * 4 + 3] > 6) { if (xx < x0) x0 = xx; if (xx > x1) x1 = xx; if (yy < y0) y0 = yy; if (yy > y1) y1 = yy; }
+    if (x1 < 0) return { c: null, w: 0, h: 0, ox: 0, oy: 0 };
+    bx = x0; by = y0; bw = x1 - x0 + 1; bh = y1 - y0 + 1;
+  }
+  const o = document.createElement('canvas'); o.width = bw; o.height = bh;
+  o.getContext('2d').drawImage(c, -bx, -by);
+  return { c: o, w: bw, h: bh, ox: ax * scale - bx, oy: ay * scale - by };
+}
+function crop(im, r) {
+  const c = document.createElement('canvas'); c.width = r[2]; c.height = r[3];
+  c.getContext('2d').drawImage(im, r[0], r[1], r[2], r[3], 0, 0, r[2], r[3]);
+  return c;
+}
+
+// ---------- 打包成一張圖 ----------
+// 由高到矮一排一排放，寬度不超過 maxW；回傳每塊的位置
+function pack(pieces, maxW = 2048) {
+  const list = pieces.filter(p => p.c).map((p, i) => ({ p, i })).sort((a, b) => b.p.h - a.p.h);
+  let x = 0, y = 0, rowH = 0, W = 0;
+  for (const it of list) {
+    if (x + it.p.w + 1 > maxW) { x = 0; y += rowH + 1; rowH = 0; }
+    it.p.x = x; it.p.y = y; x += it.p.w + 1; rowH = Math.max(rowH, it.p.h); W = Math.max(W, x);
+  }
+  const H = y + rowH;
+  const c = document.createElement('canvas'); c.width = Math.max(1, W); c.height = Math.max(1, H);
+  const ctx = c.getContext('2d');
+  for (const it of list) ctx.drawImage(it.p.c, it.p.x, it.p.y);
+  return c;
+}
+const toWebp = (c, q) => new Promise(res => c.toBlob(res, 'image/webp', q));
+const R1 = v => Math.round(v * 10) / 10;
+const rectOf = p => (p.c ? [p.x, p.y, p.w, p.h, R1(p.ox), R1(p.oy)] : null);
+
+// ---------- 場景圖塊 ----------
+async function buildTiles(name, cfg) {
+  const S = FLARE_CONFIG.scale, defs = parseTileset(await loadText(cfg.def));
+  const pieces = [], index = {};
+  for (const [kind, ids] of Object.entries(cfg.tiles)) {
+    index[kind] = [];
+    for (const id of ids) {
+      const t = defs[id]; if (!t) throw new Error(`${name} 沒有圖塊 ${id}`);
+      const im = await loadImg(t.img), r = t.r;
+      // 地板保留完整的菱形（不去空白），其他去空白
+      const floor = kind === 'grass' || kind === 'road' || kind === 'water';
+      const p = shrink(crop(im, r), r[4], r[5], S, floor);
+      index[kind].push(pieces.length); pieces.push(p);
+    }
+  }
+  const atlas = pack(pieces);
+  await save(`${name}/tiles.webp`, await toWebp(atlas, FLARE_CONFIG.quality));
+  const t = {};
+  for (const k in index) t[k] = index[k].map(i => rectOf(pieces[i]));
+  await save(`${name}/tiles.json`, JSON.stringify({ scale: S, img: 'tiles.webp', w: atlas.width, h: atlas.height, t }));
+  return `${name}：${pieces.length} 塊，${atlas.width}×${atlas.height}`;
+}
+
+// ---------- 角色動畫 ----------
+// layers：[{ def（parseAnim 的結果）, im }]，依方向有不同的疊圖順序（order[方向] = 這一層排第幾）
+// 回傳 { 遊戲動作: { ms, once, fr: [[方向 0..7 的格子]] } }
+async function buildSprite(outName, layerDefs, attack, orderFor) {
+  const S = FLARE_CONFIG.scale, map = Object.assign({ attack }, FLARE_CONFIG.anims);
+  const pieces = [], anims = {};
+  for (const [ga, fa] of Object.entries(map)) {
+    const base = layerDefs[0].def.anims[fa];
+    if (!base) continue;
+    const seq = [...Array(base.frames).keys()];
+    if (base.type === 'back_forth') for (let i = base.frames - 2; i > 0; i--) seq.push(i);   // 來回播：展開成一般的循環
+    const uniq = {};
+    for (const f of new Set(seq)) {
+      uniq[f] = [];
+      for (let d = 0; d < 8; d++) {
+        // 疊好所有圖層（原尺寸），錨點放在 (256, 320)
+        const c = document.createElement('canvas'); c.width = 512; c.height = 448;
+        const x = c.getContext('2d');
+        for (const L of orderFor(d)) {
+          const a = L.def.anims[fa], r = a && a.fr[f] && a.fr[f][d];
+          if (!r) continue;
+          x.drawImage(L.im, r[0], r[1], r[2], r[3], 256 - r[4], 320 - r[5], r[2], r[3]);
+        }
+        const p = shrink(c, 256, 320, S, false);
+        uniq[f][d] = pieces.length; pieces.push(p);
+      }
+    }
+    anims[ga] = { ms: Math.round(base.ms / base.frames), once: base.type === 'play_once', seq, uniq };
+  }
+  const atlas = pack(pieces);
+  await save(`${outName}.webp`, await toWebp(atlas, FLARE_CONFIG.quality));
+  const out = {};
+  for (const [k, a] of Object.entries(anims)) out[k] = { ms: a.ms, once: a.once, fr: a.seq.map(f => a.uniq[f].map(i => rectOf(pieces[i]))) };
+  await save(`${outName}.json`, JSON.stringify({ scale: S, img: outName.split('/').pop() + '.webp', w: atlas.width, h: atlas.height, dirs: 8, anims: out }));
+  return `${outName}：${pieces.length} 格，${atlas.width}×${atlas.height}`;
+}
+
+async function buildMonster(name, cfg) {
+  const def = parseAnim(await loadText(`animations/enemies/${name}.txt`));
+  const im = await loadImg(def.image);
+  const L = { def, im };
+  return buildSprite(`monsters/${name}`, [L], cfg.attack, () => [L]);
+}
+
+let HERO_LAYERS = null;
+async function buildHero(cls, cfg) {
+  if (!HERO_LAYERS) {   // 每個方向的疊圖順序
+    const DIR = { SW: 0, W: 1, NW: 2, N: 3, NE: 4, E: 5, SE: 6, S: 7 };
+    HERO_LAYERS = [];
+    for (const line of (await loadText('engine/hero_layers.txt')).split(/\r?\n/)) {
+      const m = line.match(/^layer=(\w+),(.*)$/); if (m) HERO_LAYERS[DIR[m[1]]] = m[2].split(',');
+    }
+  }
+  const layers = {};
+  for (const [slot, part] of Object.entries(cfg.layers)) {
+    const def = parseAnim(await loadText(`animations/avatar/male/${part}.txt`));
+    layers[slot] = { def, im: await loadImg(def.image) };
+  }
+  const all = Object.values(layers);
+  return buildSprite(`heroes/${cls}`, all, cfg.attack, d => HERO_LAYERS[d].map(s => layers[s]).filter(Boolean));
+}
+
+window.runAll = async (only) => {
+  const log = [];
+  const want = k => !only || only.includes(k);
+  for (const [n, c] of Object.entries(FLARE_CONFIG.tilesets)) if (want('tiles:' + n)) log.push(await buildTiles(n, c));
+  for (const [n, c] of Object.entries(FLARE_CONFIG.monsters)) if (want('monster:' + n)) log.push(await buildMonster(n, c));
+  for (const [n, c] of Object.entries(FLARE_CONFIG.heroes)) if (want('hero:' + n)) log.push(await buildHero(n, c));
+  return log;
+};
+</script>
+</body></html>

@@ -10,9 +10,9 @@
 |---|---|
 | 忍者（綠忍） | 遠程投擲手裏劍、苦無；技能：投擲術、體術、忍法 |
 | 武士（赤武者） | 近戰揮刀橫掃成群敵人，天生減傷 10%；技能：劍術、武道、奧義 |
-| 陰陽師（式神使） | 會追蹤敵人的符咒，召喚紙鶴、狐火、前鬼助戰，傷害靠精神；技能：符術、式神、陰陽道 |
+| 術士（契約者） | 西方術士：會追蹤敵人的暗影箭，召喚小惡魔、魂火、深淵惡魔助戰，傷害靠精神；技能：暗影術、惡魔學、秘法（原本是陰陽師，2026-10-31 改成術士，舊存檔照常可用） |
 
-武器分職業：忍者用手裏劍類，武士用刀、脇差、大太刀、薙刀，陰陽師用符、御幣、錫杖、咒書。打倒怪物掉的武器大多是自己職業能用的。
+武器分職業：忍者用手裏劍類，武士用刀、脇差、大太刀、薙刀，術士用魔杖、卷軸、法杖、魔法書。打倒怪物掉的武器大多是自己職業能用的。
 
 **遊玩網址：https://poyuanlife.github.io/shinki-kigen/**
 
@@ -58,3 +58,5 @@
 ## 素材來源
 
 美術、音樂與音效：[Ninja Adventure Asset Pack](https://pixel-boy.itch.io/ninja-adventure-asset-pack)，作者 Pixel-boy 與 AAA，以 CC0 授權釋出。授權全文見 `assets/na/LICENSE.txt`。
+
+寫實素材（試做，系統選單「畫面風格」→「寫實素材」）：場景、怪物與主角的圖來自 [Flare](https://flarerpg.org)（[flare-game](https://github.com/flareteam/flare-game)，Flare 製作團隊），以 [CC-BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) 授權釋出。`assets/flare/` 裡的圖是從原圖裁切、縮小、組合後的改作，同樣以 CC-BY-SA 3.0 授權釋出；轉換程式在 `tools/flare/`。

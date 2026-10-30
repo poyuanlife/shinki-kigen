@@ -79,7 +79,8 @@ const curZone = () => ZONE_BY_ID[G.zone] || ZONES[0];
 // 畫面風格：兩個預設（寫實／原本）＋細項自訂。記在這台裝置上
 //   grade 寫實程度 0～100（調色、環境光、天氣跟著區域的 mood 設定漸變）、bright 亮度 -30～30、
 //   fog 霧 0～100（50 = 區域預設濃度）、vig 暗角 0～100、shadow 地上影子
-const MOOD_PRESETS = { real: { grade: 100, bright: 0, fog: 50, vig: 62, shadow: true }, orig: { grade: 0, bright: 0, fog: 0, vig: 45, shadow: false } };
+//   flare 寫實素材（試做，flare.js）
+const MOOD_PRESETS = { real: { grade: 100, bright: 0, fog: 50, vig: 62, shadow: true, flare: true }, orig: { grade: 0, bright: 0, fog: 0, vig: 45, shadow: false, flare: false } };
 let MOODCFG = (() => {
   try {
     const j = JSON.parse(localStorage.getItem('shinki.moodcfg') || 'null');
@@ -90,6 +91,7 @@ let MOODCFG = (() => {
 function setMoodCfg(o) {
   Object.assign(MOODCFG, o);
   try { localStorage.setItem('shinki.moodcfg', JSON.stringify(MOODCFG)); } catch (e) { /* 存不了就算了 */ }
+  if ('flare' in o) { applyFlareMonsters(); invalidateGround(); }   // 換素材：怪物外觀、地板都要重畫
   applyMood();
 }
 // 目前的設定跟哪個預設一樣（都不一樣 = 自訂）
@@ -97,15 +99,17 @@ const moodPresetName = () => Object.keys(MOOD_PRESETS).find(k => Object.keys(MOO
 const moodK = () => MOODCFG.grade / 100;
 // 調色用畫布的 CSS 濾鏡（交給顯示卡做，幾乎不花效能）；畫質「低」時只調亮度
 function applyMood() {
-  const m = curZone().mood, key = G.zone + '|' + JSON.stringify(MOODCFG) + '|' + qualityIdx;
+  const fl = !!flareTiles(), m = curZone().mood, key = G.zone + '|' + JSON.stringify(MOODCFG) + '|' + qualityIdx + '|' + fl;
   if (G.moodKey === key) return;
   G.moodKey = key;
   const k = qualityIdx < 2 ? moodK() : 0, f = {};
   if (m && k > 0) for (const [, n, v] of m.filter.matchAll(/(\w+)\(([\d.]+)/g)) f[n] = +v;
-  const mix = (n, base) => base + ((f[n] !== undefined ? f[n] : base) - base) * k;
-  const br = mix('brightness', 1) * (1 + MOODCFG.bright / 100);
+  // 寫實素材本身就偏暗、偏灰：調色減輕一點、亮一點
+  const kk = fl ? k * 0.6 : k;
+  const mix = (n, base) => base + ((f[n] !== undefined ? f[n] : base) - base) * kk;
+  const br = mix('brightness', 1) * (1 + MOODCFG.bright / 100) * (fl ? 1.12 : 1);
   const parts = [];
-  if (k > 0) parts.push(`saturate(${mix('saturate', 1).toFixed(3)})`, `contrast(${mix('contrast', 1).toFixed(3)})`, `sepia(${mix('sepia', 0).toFixed(3)})`);
+  if (kk > 0) parts.push(`saturate(${mix('saturate', 1).toFixed(3)})`, `contrast(${mix('contrast', 1).toFixed(3)})`, `sepia(${mix('sepia', 0).toFixed(3)})`);
   if (Math.abs(br - 1) > 0.001) parts.push(`brightness(${br.toFixed(3)})`);
   canvas.style.filter = parts.join(' ');
 }
@@ -510,7 +514,7 @@ function calcStats(p) {
   s.dmgMin = base[0] + s.flatDmg; s.dmgMax = base[1] + s.flatDmg;
   s.range = w ? w.range : s.melee ? 1.4 : 5;
   const kiai = buffs.kiai > 0 ? (20 + lv('kiai') * 2) / 100 : 0;
-  // 陰陽師的傷害主要看精神，力量只算一半
+  // 術士的傷害主要看精神，力量只算一半
   const statDmg = C.dmgStat === 'ene' ? s.ene * 0.01 + s.str * 0.005 : s.str * 0.01;
   s.dmgMult = 1 + statDmg + s.dmgPct / 100 + lv('overload') * 0.07 + lv('bushido') * 0.06 + kiai + bless;
   s.bulletMult = 1 + lv('pierce') * 0.05 + lv('fuuryoku') * 0.06;
@@ -595,8 +599,8 @@ function basicAttack(tx, ty) {
     if (P.st.melee) {
       meleeSwing(ang, 1, w && w.wkey === 'naginata' ? 1.2 : w && w.wkey === 'odachi' ? 2.4 : 1.9, P.st.range);
     } else if (P.cls === 'onmyoji') {
-      // 符咒：會轉彎追蹤附近的敵人
-      fireBullet(P, ang + rand(-0.05, 0.05), 1, { kind: 'fuda', home: true, speed: 12, color: w && w.wkey === 'shakujo' ? '#c9a6ff' : '#ff8aa8' });
+      // 暗影箭：會轉彎追蹤附近的敵人（法杖射的是火焰色）
+      fireBullet(P, ang + rand(-0.05, 0.05), 1, { kind: 'fuda', home: true, speed: 12, color: w && w.wkey === 'shakujo' ? '#ff9a40' : '#b070ff' });
     } else if (w && w.wkey === 'shotgun') {
       for (let i = 0; i < 4; i++) fireBullet(P, ang + (i - 1.5) * 0.12, 0.4, { speed: rand(14, 17), color: '#ffb060' });
     } else if (w && w.wkey === 'rail') {
@@ -738,10 +742,10 @@ function castSkill(id, w, held) {
       G.shake = 14;
       break;
     }
-    // ---- 陰陽師 ----
+    // ---- 術士（技能代號沿用陰陽師時期的，舊存檔的技能點才讀得到）----
     case 'hama': {
       const n = 3 + Math.floor(lv / 6);
-      for (let i = 0; i < n; i++) fireBullet(p, ang + (i / (n - 1) - 0.5) * 0.7, (90 + lv * 10) / 100, { kind: 'fuda', home: true, speed: rand(10.5, 12.5), color: '#ff6a8a' });
+      for (let i = 0; i < n; i++) fireBullet(p, ang + (i / (n - 1) - 0.5) * 0.7, (90 + lv * 10) / 100, { kind: 'fuda', home: true, speed: rand(10.5, 12.5), color: '#b070ff' });
       p.atkCd = 1 / s.aps * 1.2; p.path = []; p.target = null; p.face = ang;
       break;
     }
@@ -762,19 +766,22 @@ function castSkill(id, w, held) {
       const cranes = G.turrets.filter(t => t.kind === 'crane');
       while (cranes.length >= max) G.turrets.splice(G.turrets.indexOf(cranes.shift()), 1);
       G.turrets.push({ kind: 'crane', x: p.x, y: p.y, r: 0.3, a: rand(0, 6.28), life: 18 + s.lv('shikiryoku'), cd: 0.4, mult: (40 + lv * 6) / 100 * s.shikiMult, sang: 0, flash: 0 });
-      burst(p.x, p.y, 10, '#f2f0ea', { sp: 2, z: 30 });
+      burst(p.x, p.y, 10, '#ff6a30', { sp: 2, z: 30 });
       break;
     }
     case 'kitsunebi': p.buffs.kitsunebi = 8; p.foxA = 0; break;
     case 'zenki': {
       G.allies = [{ x: p.x + Math.cos(ang), y: p.y + Math.sin(ang), r: 0.45, life: 20 + s.lv('shikiryoku'), cd: 0.5, face: ang, mv: false, runT: 0, atk: 0, mult: (180 + lv * 20) / 100 * s.shikiMult }];
-      G.fx.push({ type: 'ring', x: p.x + Math.cos(ang), y: p.y + Math.sin(ang), t: 0, dur: 0.6, r: 2.5, color: '255,120,90' });
+      G.fx.push({ type: 'ring', x: p.x + Math.cos(ang), y: p.y + Math.sin(ang), t: 0, dur: 0.6, r: 2.5, color: '170,90,255' });
       G.shake = Math.max(G.shake, 6);
       break;
     }
-    case 'hangon': {
+    case 'hangon': {   // 生命虹吸：傷害周圍敵人，再回復生命
+      for (const e of G.enemies) if (!e.dead && dist(e, p) < 3.5) burst(e.x, e.y, 6, '#d02040', { sp: 1.5, z: 20 });
+      damageArea(p.x, p.y, 3.5, (60 + lv * 6) / 100);
+      G.fx.push({ type: 'ring', x: p.x, y: p.y, t: 0, dur: 0.5, r: 3.5, color: '220,40,70' });
       const n = Math.round(s.maxHp * (30 + lv * 2) / 100); healP(n);
-      floatText(p.x, p.y, '+' + n, '#5f5', 16); burst(p.x, p.y, 18, '#9f9', { sp: 1.5, z: 30 });
+      floatText(p.x, p.y, '+' + n, '#5f5', 16); burst(p.x, p.y, 18, '#ff6080', { sp: 1.5, z: 30 });
       break;
     }
     case 'taikyoku': p.buffs.taikyoku = 6 + lv * 0.3; break;
@@ -827,7 +834,7 @@ function hurtPlayer(raw, lvl) {
   if (p.buffs.taikyoku > 0 && p.mp > 0) {
     const take = Math.min(p.mp, Math.round(d * Math.min(90, 40 + s.lv('taikyoku') * 2) / 100));
     p.mp -= take; d -= take;
-    if (take > 0) floatText(p.x, p.y, '太極 -' + take, '#c9a6ff', 12);
+    if (take > 0) floatText(p.x, p.y, '魔盾 -' + take, '#9ac8ff', 12);
   }
   if (p.shield > 0) {
     const a = Math.min(p.shield, d); p.shield -= a; d -= a;
@@ -952,7 +959,7 @@ function killEnemy(e) {
   dropLoot(e);
   burst(e.x, e.y, e.type === 'boss' ? 80 : 12, e.def.blood, { sp: 3, z: 20 });
   if (e.type === 'boss') burst(e.x, e.y, 30, '#ffcc55', { sp: 4, z: 20 });
-  G.corpses.push({ x: e.x, y: e.y, spr: e.def.spr, scale: enemyScale(e), dir: pickDir(e, screenAngle(e.face)), t: 0, life: 0.6, big: e.type === 'boss' || e.type === 'brute' });
+  G.corpses.push({ x: e.x, y: e.y, spr: e.def.spr, scale: enemyScale(e), dir: specDir(e.def.spr, e, screenAngle(e.face)), t: 0, life: SPEC[e.def.spr].flare ? 1.1 : 0.6, big: e.type === 'boss' || e.type === 'brute' });
   if (G.corpses.length > 40) G.corpses.shift();
   G.decals.push({ x: e.x, y: e.y, r: e.type === 'boss' ? 1.6 : 0.6, color: e.def.blood, t: 0, life: 25 });
   G.killsSinceBoss++;
@@ -1219,7 +1226,7 @@ function updateFx(dt) {
 
 function updateBullets(dt) {
   for (const b of G.bullets) {
-    if (b.home) {   // 符咒：轉向 5 格內最近、還沒打中過的敵人
+    if (b.home) {   // 暗影箭、火彈：轉向 5 格內最近、還沒打中過的敵人
       let best = null, bd = 5;
       for (const e of G.enemies) { if (e.dead || b.hit.has(e)) continue; const d = Math.hypot(e.x - b.x, e.y - b.y); if (d < bd) { bd = d; best = e; } }
       if (best) {
@@ -1255,11 +1262,11 @@ function updateBullets(dt) {
 function updateTurrets(dt) {
   for (const t of G.turrets) {
     t.life -= dt; t.cd -= dt; t.flash -= dt;
-    if (t.kind === 'crane') {   // 紙鶴：繞著玩家飛，射出追蹤符咒
+    if (t.kind === 'crane') {   // 小惡魔：繞著玩家飛，吐出追蹤火彈
       t.a += dt * 1.6; t.x = P.x + Math.cos(t.a) * 1.2; t.y = P.y + Math.sin(t.a) * 1.2;
       let best = null, bd = 7;
       for (const e of G.enemies) { const d = dist(e, t); if (d < bd) { bd = d; best = e; } }
-      if (best) { t.face = Math.atan2(best.y - t.y, best.x - t.x); if (t.cd <= 0) { t.cd = 0.6; fireBullet(t, t.face, t.mult, { kind: 'fuda', home: true, speed: 11, color: '#bfe8ff' }); } }
+      if (best) { t.face = Math.atan2(best.y - t.y, best.x - t.x); if (t.cd <= 0) { t.cd = 0.6; fireBullet(t, t.face, t.mult, { kind: 'fuda', home: true, speed: 11, color: '#ff8a30' }); } }
       continue;
     }
     let best = null, bd = 7.5;
@@ -1273,7 +1280,7 @@ function updateTurrets(dt) {
   G.turrets = G.turrets.filter(t => t.life > 0);
 }
 
-// 前鬼：追著最近的敵人揮棒；沒有敵人就跟在玩家身邊（不會被打）
+// 深淵惡魔：追著最近的敵人揮棒；沒有敵人就跟在玩家身邊（不會被打）
 function updateAllies(dt) {
   for (const a of G.allies) {
     a.life -= dt; a.cd -= dt; a.atk -= dt; a.mv = false;
@@ -1354,12 +1361,12 @@ function updatePlayer(dt) {
       fireBullet(p, ang + rand(-0.09, 0.09), (55 + s.lv('gatling') * 6) / 100);
     }
   }
-  if (p.buffs.kitsunebi > 0) {   // 狐火：3 團繞身旋轉，碰到的敵人每 0.4 秒受傷一次
+  if (p.buffs.kitsunebi > 0) {   // 魂火：3 團繞身旋轉，碰到的敵人每 0.4 秒受傷一次
     p.foxA = (p.foxA || 0) + dt * 3.2;
     const mult = (70 + s.lv('kitsunebi') * 8) / 100 * s.shikiMult;
     for (let i = 0; i < 3; i++) {
       const a = p.foxA + i * 2.094, fx = p.x + Math.cos(a) * 1.5, fy = p.y + Math.sin(a) * 1.5;
-      for (const e of G.enemies) if (!e.dead && !(e.foxCd > G.t) && Math.hypot(e.x - fx, e.y - fy) < 0.5 + e.r) { e.foxCd = G.t + 0.4; hitEnemy(e, mult); burst(e.x, e.y, 4, '#8cf', { sp: 1.5, z: 20 }); }
+      for (const e of G.enemies) if (!e.dead && !(e.foxCd > G.t) && Math.hypot(e.x - fx, e.y - fy) < 0.5 + e.r) { e.foxCd = G.t + 0.4; hitEnemy(e, mult); burst(e.x, e.y, 4, '#8f6', { sp: 1.5, z: 20 }); }
     }
   }
   if (p.buffs.senjin > 0) {   // 千刃旋風：每 0.2 秒砍一圈
@@ -1528,6 +1535,15 @@ function drawDeco(c, x, y, cx, cy, list) {
   }
 }
 
+// 寫實素材的花草：草叢、花縮小一點；碎石用小石頭
+function drawFlareDeco(c, T, x, y, cx, cy, list) {
+  const sd = M.seed[idx(x, y)], jx = (sd - 0.5) * 10, jy = ((sd * 3.7) % 1 - 0.5) * 6;
+  for (const d of list) {
+    if (d === 'plant') { if (sd < 0.55) drawFlareTile(c, T, sd < 0.08 ? 'flower' : 'plant', (sd * 7.3) % 1, cx + jx, cy + jy, 0.55); }
+    else if (d === 'stone') { if (sd < 0.35) drawFlareTile(c, T, 'rock', (sd * 5.1) % 1, cx + jx, cy + jy, 0.28); }
+  }
+}
+
 // ---------- 地板捲動緩衝 ----------
 // 地板（圖塊 + 花草）畫在一張比螢幕大一圈的圖上，每幀只貼這一張。
 // 鏡頭移出範圍時，把舊內容平移過去，只補畫新露出來的那一條邊，
@@ -1541,7 +1557,8 @@ function invalidateGround() { gbuf.valid = false; }
 // 在 c 上（已設好座標轉換，單位 = 投影座標）畫出 (rx, ry, rw, rh) 範圍內的地板；回傳圖是否都載完
 function paintGround(c, rx, ry, rw, rh) {
   c.save();
-  c.imageSmoothingEnabled = false;
+  const FT = flareTiles();   // 寫實素材：Flare 的地板（縮小時要平滑）
+  c.imageSmoothingEnabled = !!FT; c.imageSmoothingQuality = 'high';
   c.beginPath(); c.rect(rx, ry, rw, rh); c.clip();
   // 範圍四角換回世界座標，找出要畫的格子
   const inv = (X, Y) => { const a = X / (TW / 2), b = Y / (TH / 2); return [(a + b) / 2, (b - a) / 2]; };
@@ -1560,6 +1577,11 @@ function paintGround(c, rx, ry, rw, rh) {
     if (y < y0 || y > y1) continue;
     const i = idx(x, y), X = isoX(x, y), Y = isoY(x, y), sd = M.seed[i];
     if (!near(X, Y, TH)) continue;
+    if (FT) {   // 草地／道路／水：每格一塊，稍微放大一點蓋住接縫
+      const kind = M.tile[i] === 2 ? 'water' : isDirt(x, y) ? 'road' : 'grass';
+      drawFlareTile(c, FT, kind, sd, X, Y + TH / 2, 1.04, kind === 'water');
+      continue;
+    }
     ok = drawGrass(c, X, Y, sd) && ok;
     if (M.tile[i] === 2) ok = drawAuto(c, 'water', mask(isWater, x, y), X, Y, sd) && ok;
     else if (isDirt(x, y)) ok = drawAuto(c, 'dirt', mask(isDirt, x, y), X, Y, sd) && ok;
@@ -1570,7 +1592,8 @@ function paintGround(c, rx, ry, rw, rh) {
     const i = idx(x, y);
     if (!M.deco[i] || M.tile[i] !== 0) continue;
     const X = isoX(x + 0.5, y + 0.5), Y = isoY(x + 0.5, y + 0.5);
-    if (near(X, Y, 50)) drawDeco(c, x, y, X, Y, M.deco[i]);
+    if (!near(X, Y, 50)) continue;
+    if (FT) drawFlareDeco(c, FT, x, y, X, Y, M.deco[i]); else drawDeco(c, x, y, X, Y, M.deco[i]);
   }
   c.restore();
   return ok;
@@ -1629,7 +1652,7 @@ function drawWall(x, y, ps) {
   let alpha = 1;
   if (x + y + 1 > P.x + P.y && Math.abs(s.x - ps.x) < 44 && ps.y < s.y + 4 && ps.y > s.y - 72) alpha = 0.45;
   ctx.globalAlpha = alpha;
-  drawTree(ctx, s.x, s.y + 6, M.seed[idx(x, y)]);
+  if (!drawFlareWall(ctx, s.x, s.y, M.seed[idx(x, y)])) drawTree(ctx, s.x, s.y + 6, M.seed[idx(x, y)]);
   ctx.globalAlpha = 1;
 }
 
@@ -1721,7 +1744,7 @@ function render() {
     } });
   }
   for (const t of G.turrets) { const s = toScreen(t.x, t.y); draws.push({ d: t.x + t.y, f: () => (t.kind === 'crane' ? drawCrane(ctx, s.x, s.y, G.t + t.a, screenAngle(t.face || 0)) : drawTurret(ctx, s.x, s.y, t, G.t)) }); }
-  // 前鬼：鬼王的圖縮小，腳下藍圈表示是自己人
+  // 深淵惡魔：鬼王的圖縮小，腳下藍圈表示是自己人
   for (const a of G.allies) {
     const s = toScreen(a.x, a.y);
     draws.push({ d: a.x + a.y, f: () => {
@@ -1790,11 +1813,11 @@ function render() {
 }
 
 
-// 地上的符陣：五芒星（畫好後爆發）、封印陣（持續一段時間）
+// 地上的法陣：地獄法陣（五芒星，畫好後爆發）、腐蝕詛咒（持續一段時間）
 function drawSigil(f) {
   const pent = f.type === 'pentagram';
   const k = pent ? Math.min(1, f.t / f.delay) : 1, fade = pent ? (f.fired ? Math.max(0, 1 - (f.t - f.delay) / 0.5) : 1) : Math.min(1, (f.dur - f.t) / 0.5, f.t / 0.2);
-  const col = pent ? '255,110,160' : '190,140,255';
+  const col = pent ? '255,100,40' : '130,220,90';
   const P2 = (a, r) => { const s = toScreen(f.x + Math.cos(a) * r, f.y + Math.sin(a) * r); return [s.x, s.y]; };
   ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = fade;
   ctx.strokeStyle = `rgba(${col},0.9)`; ctx.lineWidth = 2;
@@ -1810,7 +1833,7 @@ function drawSigil(f) {
       ctx.lineTo(ax + (bx - ax) * q, ay + (by - ay) * q);
     }
     ctx.lineWidth = 3; ctx.stroke();
-  } else {   // 封印陣：兩圈 + 旋轉的八個符字點
+  } else {   // 腐蝕詛咒：兩圈 + 旋轉的八個符文
     ell(ctx, c.x, c.y, f.r * TW / 2 * 0.7, f.r * TH / 2 * 0.7); ctx.stroke();
     ctx.fillStyle = `rgba(${col},0.9)`;
     for (let i = 0; i < 8; i++) { const [x, y] = P2(rot + i * Math.PI / 4, f.r * 0.85); ctx.fillRect(x - 3, y - 5, 6, 8); }
@@ -1907,8 +1930,9 @@ function drawEffects() {
 const SHADOW_R = { tree: 20, grave: 13, crate: 11, lamp: 8, shrine: 16, tent: 30, flag: 7, chest: 10, anvil: 12, barrel: 12, campfire: 14 };
 function drawPropShadows() {
   ctx.fillStyle = 'rgba(10,8,4,0.3)';
+  const ft = !!flareTiles();
   for (const p of G.props) {
-    const r = SHADOW_R[p.type]; if (!r) continue;
+    const r = SHADOW_R[p.type]; if (!r || (ft && FLARE_PROP[p.type])) continue;   // Flare 的圖本身有影子
     const s = toScreen(p.x, p.y);
     if (s.x < -60 || s.x > W + 60 || s.y < -30 || s.y > H + 60) continue;
     ell(ctx, s.x + r * 0.45, s.y + 1, r * 1.15, r * 0.45, 0.18); ctx.fill();
@@ -1958,7 +1982,7 @@ function drawLighting(ps) {
   // 環境光：原本的和寫實的之間，依寫實程度漸變
   const Z = curZone(), k = moodK(), LA = Z.light, LB = (Z.mood && Z.mood.light) || LA;
   const ca = LA.rgb.split(',').map(Number), cb = LB.rgb.split(',').map(Number);
-  const ZL = { a: LA.a + (LB.a - LA.a) * k, rgb: ca.map((v, i) => Math.round(v + (cb[i] - v) * k)).join(',') };
+  const ZL = { a: (LA.a + (LB.a - LA.a) * k) * (flareTiles() ? 0.65 : 1), rgb: ca.map((v, i) => Math.round(v + (cb[i] - v) * k)).join(',') };
   lctx.fillStyle = `rgba(${ZL.rgb},${ZL.a})`; lctx.fillRect(0, 0, lw, lh);
   lctx.globalCompositeOperation = 'destination-out';
   lctx.setTransform(K, 0, 0, K, 0, 0);   // 下面用邏輯座標畫，自動縮成低解析度
@@ -2517,9 +2541,9 @@ function updateHUD() {
   if (P.buffs.senjin) b.push(`<span style="color:#ff8a7a">千刃旋風 ${P.buffs.senjin.toFixed(1)}s</span>`);
   if (P.buffs.kiai) b.push(`<span style="color:#ff9a6a">氣合 ${P.buffs.kiai.toFixed(0)}s</span>`);
   if (P.buffs.kongou) b.push(`<span style="color:#ffd25a">金剛身 ${P.buffs.kongou.toFixed(0)}s</span>`);
-  if (P.buffs.kitsunebi) b.push(`<span style="color:#7fd8ff">狐火 ${P.buffs.kitsunebi.toFixed(0)}s</span>`);
-  if (P.buffs.taikyoku) b.push(`<span style="color:#c9a6ff">太極 ${P.buffs.taikyoku.toFixed(0)}s</span>`);
-  for (const a of G.allies) b.push(`<span style="color:#ff9a7a">前鬼 ${a.life.toFixed(0)}s</span>`);
+  if (P.buffs.kitsunebi) b.push(`<span style="color:#8f6">魂火 ${P.buffs.kitsunebi.toFixed(0)}s</span>`);
+  if (P.buffs.taikyoku) b.push(`<span style="color:#9ac8ff">魔力護盾 ${P.buffs.taikyoku.toFixed(0)}s</span>`);
+  for (const a of G.allies) b.push(`<span style="color:#c9a0ff">深淵惡魔 ${a.life.toFixed(0)}s</span>`);
   if (P.cds.town) b.push(`<span style="color:#8cf">傳送冷卻 ${P.cds.town.toFixed(0)}s</span>`);
   $('buffs').innerHTML = b.join('');
   // 目標資訊
@@ -2712,9 +2736,11 @@ function renderMoodOpts() {
   $('moodTag').textContent = p === 'custom' ? '目前：自訂' : '';
   for (const [k, [id, fmt]] of Object.entries(MOOD_SLIDERS)) { $(id).value = MOODCFG[k]; $(id + 'Val').textContent = fmt(MOODCFG[k]); }
   $('optShadow').checked = MOODCFG.shadow;
+  $('optFlare').checked = MOODCFG.flare;
 }
 document.querySelectorAll('#optMood button').forEach(b => { b.onclick = () => { setMoodCfg(MOOD_PRESETS[b.dataset.m]); renderMoodOpts(); Snd.play('ui'); }; });
 for (const [k, [id]] of Object.entries(MOOD_SLIDERS)) $(id).oninput = e => { setMoodCfg({ [k]: +e.target.value }); renderMoodOpts(); };
+$('optFlare').onchange = e => { setMoodCfg({ flare: e.target.checked }); renderMoodOpts(); Snd.play('ui'); };
 $('optShadow').onchange = e => { setMoodCfg({ shadow: e.target.checked }); renderMoodOpts(); Snd.play('ui'); };
 document.querySelectorAll('#optDir button').forEach(b => { b.onclick = () => { setDirMode(b.dataset.d); P && (P._dir = undefined); for (const e of G.enemies) e._dir = undefined; renderMenu(); Snd.play('ui'); }; });
 $('btnCamp').onclick = () => { closeMenu(); returnToCamp(); };

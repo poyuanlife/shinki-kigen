@@ -51,9 +51,9 @@
       </div>
       <div class="card pick" data-cls="onmyoji">
         <canvas class="portrait" width="200" height="240"></canvas>
-        <div class="cardFlag">式神使</div>
-        <div class="cardName">陰陽師</div>
-        <div class="cardDesc">驅使符咒與式神的術士。符咒會自動追蹤妖怪，紙鶴、狐火、前鬼替你作戰。</div>
+        <div class="cardFlag">契約者</div>
+        <div class="cardName">術士</div>
+        <div class="cardDesc">與惡魔立約的西方術士。暗影箭會自動追蹤敵人，小惡魔、魂火與深淵惡魔替你作戰。</div>
       </div>
       <div class="card locked"><div class="lockIcon">?</div><div class="cardFlag">？？？</div><div class="cardName">尚未開放</div></div>
     </div>
@@ -64,7 +64,7 @@
     <div class="help">
       <b>操作</b>　WASD / 方向鍵：移動　｜　M（按住）：左鍵技能　空白鍵（按住）：右鍵技能（都會自動瞄準最近的敵人）　｜　左鍵：移動 / 攻擊 / 拾取　｜　Shift+左鍵：原地投擲　｜　右鍵：右鍵技能　｜　點快捷列兩側換技能，清單中按 1–8 設定快捷鍵<br>
       R：跑步 / 走路　F：拾取附近的裝備　Q：生命藥水　E：魔力藥水　｜　C：角色　I：背包　K：技能樹　T：回營地　Tab：小地圖　N：音樂開關　V：音效開關　Esc：系統選單 / 關閉視窗<br>
-      <span class="dim">美術與音樂：<a href="https://pixel-boy.itch.io/ninja-adventure-asset-pack" target="_blank" rel="noopener" style="color:inherit">Ninja Adventure</a>（Pixel-boy &amp; AAA，CC0）</span><br>
+      <span class="dim">美術與音樂：<a href="https://pixel-boy.itch.io/ninja-adventure-asset-pack" target="_blank" rel="noopener" style="color:inherit">Ninja Adventure</a>（Pixel-boy &amp; AAA，CC0）　寫實素材：<a href="https://flarerpg.org" target="_blank" rel="noopener" style="color:inherit">Flare</a>（Flare 製作團隊，CC-BY-SA 3.0）</span><br>
       <span class="dim">F2：診斷報告　F3：顯示 FPS　F4：切換畫質　｜　測試鍵：F9 立即升級　F10 掉落史詩＋傳奇裝備　F8 召喚首領</span>
     </div>
   </div>
@@ -161,6 +161,7 @@
   <div class="setRow"><label>亮度</label><input type="range" id="optBright" min="-30" max="30" step="5"><span class="setVal" id="optBrightVal"></span></div>
   <div class="setRow"><label>霧</label><input type="range" id="optFog" min="0" max="100" step="5"><span class="setVal" id="optFogVal"></span></div>
   <div class="setRow"><label>暗角</label><input type="range" id="optVig" min="0" max="100" step="5"><span class="setVal" id="optVigVal"></span></div>
+  <div class="setRow"><label style="width:auto"><input type="checkbox" id="optFlare"> 寫實素材（試做）</label><span class="dim">青葉之原的場景、怪物和主角換成寫實的圖</span></div>
   <div class="setRow"><label><input type="checkbox" id="optShadow"> 影子</label><span class="dim">樹、石頭等物件在地上的影子</span></div>
   <div class="hint">寫實程度：0 是原本的鮮豔色調，100 是偏暗、偏土色的寫實色調。霧 50 是每個區域的預設濃度。畫質「低」時不調色、不顯示霧。</div>
   <h3>快捷鍵 1～8</h3>
@@ -194,6 +195,7 @@
 <script src="js/render.js"></script>
 <script src="js/gfx.js"></script>
 <script src="js/zones.js"></script>
+<script src="js/flare.js"></script>
 <script src="js/skillbar.js"></script>
 <script src="js/touch.js"></script>
 <script src="js/game.js"></script>

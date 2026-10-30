@@ -68,6 +68,19 @@ const ZONES = [
     light: { a: 0.22, rgb: '10,8,24' }, weather: 'pollen',
     // 寫實風格（系統選單「畫面風格」）：畫面調色、環境光、霧、天氣
     mood: { filter: 'saturate(0.62) contrast(1.12) brightness(0.94) sepia(0.2)', light: { a: 0.3, rgb: '24,18,10' }, fog: '205,200,180', fogA: 0.16, weather: 'motes' },
+    // 寫實素材（試做，flare.js）：場景圖塊和每個定位換成的 Flare 怪物
+    flare: {
+      tiles: 'field',
+      monsters: {
+        ghoul: { name: '哥布林', spr: 'f_goblin', scale: 1, blood: '#8a2020' },
+        hound: { name: '沙蟻獅', spr: 'f_antlion_small', fly: false, scale: 1, blood: '#7a6020' },
+        skel: { name: '骷髏兵', spr: 'f_skeleton_weak', scale: 1 },
+        archer: { name: '骷髏弓手', spr: 'f_skeleton_archer', scale: 1, blood: '#e8e0c8' },
+        cultist: { name: '骷髏法師', spr: 'f_skeleton_mage', fly: false, scale: 1, blood: '#e8e0c8' },
+        brute: { name: '腐屍', spr: 'f_zombie', scale: 1.15, blood: '#5a7030' },
+        boss: { name: '哥布林酋長', spr: 'f_goblin_elite', scale: 1.5, blood: '#8a2020' },
+      },
+    },
     mm: { grass: [120, 170, 60], path: [170, 110, 70], wall: [40, 90, 40], water: [50, 100, 160], camp: [190, 140, 80] },
     gen: { buildings: 160, fill: 0, gap: 0.22, pools: 12, poolR: 1.6, obst: 70, rocks: 30, fires: 30, crates: 30, signs: 18 },
     monsters: {

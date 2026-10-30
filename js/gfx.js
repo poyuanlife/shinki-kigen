@@ -96,7 +96,7 @@ const SPEC = {
     idle: ninjaAnim('Idle', 4, 300), hit: ninjaAnim('Hit', 2, 80, { once: true }),
     dead: ninjaAnim('Dead', 2, 250, { once: true, oneDir: true }),
   } },
-  // 武士、陰陽師：每個動作一張圖（16×16，直欄 = 方向）
+  // 武士、術士：每個動作一張圖（16×16，直欄 = 方向）
   heroSamurai: sep16('SamuraiRed'),
   heroOnmyoji: sep16('SorcererBlack'),
   slime: mon16('Actor/Monster/Slime/Slime.png', 11),
@@ -131,6 +131,7 @@ function drawTinted(c, im, sx, sy, sw, sh, dx, dy, dw, dh, rgb, alpha) {
 // tint：給的話 flash 改成染成這個顏色（例如受傷的紅色），不給是原本的變亮閃白
 function drawSpec(c, specName, act, dir, t, x, y, scale = PX, flash = 0, tint = null) {
   const sp = SPEC[specName];
+  if (sp.flare) return drawFlareSpec(c, sp, act, dir, t, x, y, scale, flash, tint);
   const a = sp.anims[act] || (act === 'run' && sp.anims.walk) || sp.anims.idle || sp.anims.walk;
   const im = img(a.file);
   if (!ready(im)) return false;
@@ -158,7 +159,9 @@ function drawSpec(c, specName, act, dir, t, x, y, scale = PX, flash = 0, tint = 
 
 // ---------- 主角 ----------
 const HERO_SCALE = PX;
-const heroSpec = p => (p.spr && SPEC[p.spr] ? p.spr : clsOf(p).spr);
+const heroSpec = p => flareHeroSpec(p) || (p.spr && SPEC[p.spr] ? p.spr : clsOf(p).spr);
+// 角色圖有 8 個方向就從 8 個裡選，不然選 4 個
+const specDir = (spec, o, a) => (SPEC[spec].dirs === 8 ? pickDir8(o, a) : pickDir(o, a));
 function heroAnim(p) {
   if (p.dead) return ['dead', p.deadT || 0];
   // p0：連續攻擊時從動畫中段（舉弓／舉刀）接著播
@@ -173,8 +176,8 @@ function heroAnim(p) {
 function drawHero(c, x, y, p, scale = HERO_SCALE, dirOverride) {
   const [act, t] = heroAnim(p);
   const sa = screenAngle(p.face);
-  const dir = dirOverride !== undefined ? dirOverride : SPEC[heroSpec(p)].dirs === 8 ? pickDir8(p, sa) : pickDir(p, sa);
-  if (!p.dead) { c.fillStyle = 'rgba(0,0,0,0.3)'; ell(c, x, y - scale, 6 * scale, 2.5 * scale); c.fill(); }
+  const dir = dirOverride !== undefined ? dirOverride : specDir(heroSpec(p), p, sa);
+  if (!p.dead && !SPEC[heroSpec(p)].flare) { c.fillStyle = 'rgba(0,0,0,0.3)'; ell(c, x, y - scale, 6 * scale, 2.5 * scale); c.fill(); }   // Flare 的圖本身有影子
   if (p.buffs && p.buffs.stim > 0) { c.fillStyle = 'rgba(255,60,60,0.16)'; ell(c, x, y - 8 * scale, 11 * scale, 12 * scale); c.fill(); }
   if (p.buffs && p.buffs.kongou > 0) { c.fillStyle = 'rgba(255,210,90,0.18)'; ell(c, x, y - 8 * scale, 11 * scale, 12 * scale); c.fill(); }
   // 受傷：整個人閃紅，慢慢退掉
@@ -201,7 +204,7 @@ function enemyAnim(e) {
 }
 function drawEnemySprite(c, x, y, e) {
   const sc = enemyScale(e), w = enemyW(e);
-  c.fillStyle = 'rgba(0,0,0,0.3)'; ell(c, x, y - 1, w, w * 0.4); c.fill();
+  if (!SPEC[e.def.spr].flare) { c.fillStyle = 'rgba(0,0,0,0.3)'; ell(c, x, y - 1, w, w * 0.4); c.fill(); }   // Flare 的圖本身有影子
   if (e.rank === 1 || e.rank === 2) {
     c.save(); c.globalAlpha = 0.5 + Math.sin(G.t * 4) * 0.2;
     c.strokeStyle = e.rank === 1 ? '#5b9bff' : '#ffbf3a'; c.lineWidth = 1.5;
@@ -210,7 +213,7 @@ function drawEnemySprite(c, x, y, e) {
   const [act, t] = enemyAnim(e);
   // 會飛的怪物（蝙蝠、鬼火）上下飄
   const fly = e.def.fly ? Math.sin(G.t * 4 + e.anim) * 3 - 6 : 0;
-  drawSpec(c, e.def.spr, act, pickDir(e, screenAngle(e.face)), t, x, y + fly, sc, e.hitFlash > 0 ? 0.8 : 0);
+  drawSpec(c, e.def.spr, act, specDir(e.def.spr, e, screenAngle(e.face)), t, x, y + fly, sc, e.hitFlash > 0 ? 0.8 : 0);
   if (e.stun > 0) {   // 暈眩：頭上轉圈的星星
     const hy = y + fly - enemyH(e) - 4;
     c.fillStyle = '#ffe14a';
@@ -221,10 +224,11 @@ function drawEnemySprite(c, x, y, e) {
 // 屍體：閃白後淡出，搭配煙霧特效
 function drawCorpse(c, x, y, k) {
   c.save();
-  c.globalAlpha = Math.max(0, 1 - k.t / 0.5);
-  drawSpec(c, k.spr, 'idle', k.dir, 0, x, y, k.scale, k.t < 0.15 ? 1 : 0);
+  c.globalAlpha = Math.max(0, 1 - (SPEC[k.spr].flare ? Math.max(0, k.t - 0.6) : k.t) / 0.5);   // Flare 的怪物先播完倒下再淡出
+  const dead = SPEC[k.spr].flare && SPEC[k.spr].anims.dead;   // Flare 的怪物有倒下的動作
+  drawSpec(c, k.spr, dead ? 'dead' : 'idle', k.dir, dead ? k.t : 0, x, y, k.scale, k.t < 0.15 ? 1 : 0);
   c.restore();
-  drawFx(c, 'smoke', k.t, x, y - 6, PX * (k.big ? 1.6 : 1));
+  if (!SPEC[k.spr].flare) drawFx(c, 'smoke', k.t, x, y - 6, PX * (k.big ? 1.6 : 1));
 }
 
 // ---------- 特效 ----------
@@ -272,12 +276,14 @@ function drawProjectile(c, b, kind) {
       c.globalAlpha = i ? 0.95 : 0.4; c.fillStyle = i ? '#e8fbff' : (b.color || '#8ef');
       c.beginPath(); c.arc(-4 * k, 0, 13 * k, -1.2, 1.2); c.arc(-9 * k, 0, 11 * k, 1.05, -1.05, true); c.closePath(); c.fill();
     }
-  } else if (kind === 'fuda') {   // 符咒：白紙 + 紅字，飛行時微微擺動
-    c.translate(snap(s.x), snap(s.y - z)); c.rotate(ang + Math.sin(G.t * 18 + b.x) * 0.25);
-    c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.45; c.fillStyle = b.color || '#f8a'; ell(c, 0, 0, 9, 6); c.fill();
-    c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
-    c.fillStyle = '#f5ecd2'; c.fillRect(-7, -3, 14, 6);
-    c.fillStyle = '#c8202c'; c.fillRect(-5, -1, 10, 2); c.fillRect(-1, -3, 2, 6);
+  } else if (kind === 'fuda') {   // 暗影箭／小惡魔的火彈：發光的能量球，後面拖著尾巴（顏色 = b.color）
+    const col = b.color || '#b070ff', pulse = 1 + Math.sin(G.t * 20 + b.x * 3) * 0.12;
+    c.translate(snap(s.x), snap(s.y - z)); c.rotate(ang);
+    c.globalCompositeOperation = 'lighter';
+    const tg = c.createLinearGradient(-22, 0, 0, 0); tg.addColorStop(0, 'rgba(0,0,0,0)'); tg.addColorStop(1, col);
+    c.globalAlpha = 0.55; c.fillStyle = tg; ell(c, -10, 0, 13, 3.5); c.fill();   // 尾巴
+    c.globalAlpha = 0.5; c.fillStyle = col; ell(c, 0, 0, 8 * pulse, 7 * pulse); c.fill();   // 光暈
+    c.globalAlpha = 1; c.fillStyle = '#fff'; ell(c, 1, 0, 2.6, 2.4); c.fill();   // 亮的核心
   } else if (kind === 'arrow') {   // 弓箭手的箭（「圖片批次轉換」做的，箭頭朝右）
     const pr = SPEC[heroSpec(P)] && SPEC[heroSpec(P)].projectile, im = pr && img(pr.file);
     if (im && ready(im)) { c.translate(snap(s.x), snap(s.y - z)); c.rotate(ang); c.drawImage(im, -pr.w / 2, -pr.h / 2, pr.w, pr.h); }
@@ -288,28 +294,38 @@ function drawProjectile(c, b, kind) {
   c.restore();
 }
 
-// ---------- 陰陽師的式神 ----------
-// 紙鶴：(x, y) = 地面位置，飛在半空中、翅膀拍動
+// ---------- 術士的召喚物 ----------
+// 小惡魔：(x, y) = 地面位置，飛在半空中、拍著蝙蝠翅膀（函式名稱沿用紙鶴時期的）
 function drawCrane(c, x, y, t, face) {
   const z = 30 + Math.sin(t * 3) * 3, flap = Math.sin(t * 14) * 5, dir = Math.cos(face) >= 0 ? 1 : -1;
   c.fillStyle = 'rgba(0,0,0,0.25)'; ell(c, x, y - 1, 6, 2.5); c.fill();
-  c.save(); c.translate(snap(x), snap(y - z)); c.scale(dir * 1.4, 1.4);
-  c.fillStyle = '#f2f0ea'; c.strokeStyle = '#9a96a8'; c.lineWidth = 1;
-  c.beginPath(); c.moveTo(-8, 1); c.lineTo(8, -1); c.lineTo(11, -5); c.lineTo(6, 2); c.lineTo(-6, 3); c.closePath(); c.fill(); c.stroke();   // 身體與頭
-  c.fillStyle = '#e4e0f4';
-  c.beginPath(); c.moveTo(-2, 0); c.lineTo(2, 0); c.lineTo(-3, -8 - flap); c.closePath(); c.fill(); c.stroke();   // 翅膀
-  c.fillStyle = '#d23040'; c.fillRect(9, -6, 2, 2);
+  c.save(); c.translate(snap(x), snap(y - z)); c.scale(dir * 1.3, 1.3);
+  c.strokeStyle = '#1a0606'; c.lineWidth = 0.8;
+  // 翅膀（兩片，上下拍）
+  c.fillStyle = '#5a1418';
+  for (const sd of [-1, 1]) { c.beginPath(); c.moveTo(-1, -2); c.lineTo(-9, -8 - flap * 0.8 * (sd > 0 ? 1 : 0.7)); c.lineTo(-7, -2); c.lineTo(-11, -1 - flap * 0.3); c.lineTo(-2, 1); c.closePath(); c.fill(); c.stroke(); }
+  // 身體、頭、尾巴
+  c.fillStyle = '#a8282a'; ell(c, 0, 0, 5, 4); c.fill(); c.stroke();
+  ell(c, 4, -4, 3.4, 3.2); c.fill(); c.stroke();
+  c.beginPath(); c.moveTo(-4, 2); c.quadraticCurveTo(-9, 6, -10, 3); c.stroke();
+  // 角、發光的眼睛
+  c.fillStyle = '#e8d8b0'; c.beginPath(); c.moveTo(3, -7); c.lineTo(2.2, -10); c.lineTo(4.4, -7); c.fill(); c.beginPath(); c.moveTo(5.5, -7); c.lineTo(6.6, -10); c.lineTo(7, -6.5); c.fill();
+  c.fillStyle = '#ffd040'; c.fillRect(5, -5, 1.6, 1.4);
   c.restore();
+  // 身上的火光
+  c.save(); c.globalCompositeOperation = 'lighter';
+  const g = c.createRadialGradient(x, y - z, 0, x, y - z, 14); g.addColorStop(0, 'rgba(255,120,40,0.35)'); g.addColorStop(1, 'rgba(255,60,0,0)');
+  c.fillStyle = g; c.fillRect(x - 14, y - z - 14, 28, 28); c.restore();
 }
-// 狐火：藍白色的靈魂火（素材動畫 + 光暈）
+// 魂火：綠色的靈魂火（藍色素材動畫轉成綠色 + 光暈）
 function drawFoxfire(c, x, y, t) {
   const z = 18 + Math.sin(t * 5) * 3;
   c.save(); c.globalCompositeOperation = 'lighter';
   const g = c.createRadialGradient(x, y - z, 0, x, y - z, 16);
-  g.addColorStop(0, 'rgba(200,240,255,0.8)'); g.addColorStop(1, 'rgba(60,140,255,0)');
+  g.addColorStop(0, 'rgba(200,255,190,0.8)'); g.addColorStop(1, 'rgba(60,220,80,0)');
   c.fillStyle = g; c.fillRect(x - 16, y - z - 16, 32, 32);
   const im = img('FX/Magic/Spirit/SpriteSheetBlue.png');
-  if (ready(im)) { const f = Math.floor(t * 12) % 5; c.drawImage(im, f * 32, 0, 32, 32, snap(x - 16), snap(y - z - 18), 32, 32); }
+  if (ready(im)) { const f = Math.floor(t * 12) % 5; c.filter = 'hue-rotate(-100deg) saturate(1.4)'; c.drawImage(im, f * 32, 0, 32, 32, snap(x - 16), snap(y - z - 18), 32, 32); }
   c.restore();
 }
 
@@ -386,7 +402,19 @@ function drawTree(c, x, y, seed) {
 const drawArt = (c, list, seed, x, y) => { const r = list[Math.floor(seed * list.length) % list.length]; return drawObj(c, r[0], r[1], r[2], r[3], r[4], x, y + 8); };
 
 // 場景物件；回傳 false 代表交給 render.js 的程式繪製
+// 火焰：幾團會晃動的光
+function drawFlames(c, x, y, t, seed, big) {
+  c.save(); c.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 5; i++) {
+    const f = Math.sin(t * 8 + i * 1.7 + seed * 9) * 3 * big, h = (11 + Math.sin(t * 6 + i + seed) * 3) * big;
+    const g = c.createRadialGradient(x + f, y - h * 0.5, 0, x + f, y - h * 0.5, h);
+    g.addColorStop(0, 'rgba(255,240,170,0.9)'); g.addColorStop(0.5, 'rgba(255,130,30,0.55)'); g.addColorStop(1, 'rgba(255,40,0,0)');
+    c.fillStyle = g; ell(c, x + f, y - h * 0.5, 6 * big, h); c.fill();
+  }
+  c.restore();
+}
 function drawPropSprite(c, x, y, p, t) {
+  if (drawFlareProp(c, x, y, p, t)) return true;   // 寫實素材（flare.js）
   const pick = L => L[Math.floor(p.seed * L.length) % L.length];
   switch (p.type) {
     case 'rock': case 'grave': return drawArt(c, ART.rocks, p.seed, x, y);
@@ -413,16 +441,7 @@ function drawPropSprite(c, x, y, p, t) {
     case 'flag': return drawObj(c, T_CAMP, 7, 5, 1, 2, x, y + 8);
     case 'barrel': case 'campfire': {
       drawObj(c, T_CAMP, 10, 3, 2, 2, x, y + 14);
-      // 火焰
-      c.save(); c.globalCompositeOperation = 'lighter';
-      const big = p.type === 'campfire' ? 1 : 0.75;
-      for (let i = 0; i < 5; i++) {
-        const f = Math.sin(t * 8 + i * 1.7 + p.seed * 9) * 3 * big, h = (11 + Math.sin(t * 6 + i + p.seed) * 3) * big;
-        const g = c.createRadialGradient(x + f, y - h * 0.5, 0, x + f, y - h * 0.5, h);
-        g.addColorStop(0, 'rgba(255,240,170,0.9)'); g.addColorStop(0.5, 'rgba(255,130,30,0.55)'); g.addColorStop(1, 'rgba(255,40,0,0)');
-        c.fillStyle = g; ell(c, x + f, y - h * 0.5, 6 * big, h); c.fill();
-      }
-      c.restore();
+      drawFlames(c, x, y, t, p.seed, p.type === 'campfire' ? 1 : 0.75);
       return true;
     }
     case 'merchant': case 'guard': {
@@ -482,7 +501,7 @@ function loadCustomSpecs() {
     }).catch(() => { /* 沒有就用原本的圖 */ })));
 }
 function loadGameAssets() {
-  return loadCustomSpecs().then(() => loadAllImages());
+  return loadCustomSpecs().then(() => loadFlare()).then(() => loadAllImages());
 }
 function loadAllImages() {
   return Promise.all(allFiles().map(f => new Promise(res => {

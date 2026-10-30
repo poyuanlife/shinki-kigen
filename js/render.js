@@ -92,8 +92,8 @@ const WEAPON_ICONS = {
   tanto: { file: 'Items/Weapons/Ninjaku/Sprite.png' },
   odachi: { file: 'Items/Weapons/BigSword/Sprite.png' },
   naginata: { file: 'Items/Weapons/Lance/Sprite.png' },
-  ofuda: { file: 'Items/Scroll/Scroll.png' },
-  gohei: { file: 'Items/Weapons/MagicWand/Sprite.png' },
+  ofuda: { file: 'Items/Weapons/MagicWand/Sprite.png' },   // 術士：魔杖
+  gohei: { file: 'Items/Scroll/Scroll.png' },   // 術士：卷軸
   shakujo: { file: 'Items/Weapons/Stick/Sprite.png' },
   jusho: { file: 'Items/Weapons/Book/Sprite.png' },
 };

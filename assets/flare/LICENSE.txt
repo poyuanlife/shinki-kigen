@@ -1,0 +1,8 @@
+寫實素材（試做）
+
+來源：Flare: Empyrean Campaign 的美術（https://github.com/flareteam/flare-game ，mods/fantasycore）
+作者：Flare 製作團隊與貢獻者（名單見原專案的 CREDITS.txt）
+授權：Creative Commons Attribution-ShareAlike 3.0（CC-BY-SA 3.0）https://creativecommons.org/licenses/by-sa/3.0/
+
+這個資料夾裡的圖是從原圖裁切、縮小一半、把主角的裝備圖層疊成一張、打包成 WebP 的改作，
+同樣以 CC-BY-SA 3.0 授權釋出。轉換程式：tools/flare/build-flare.js
